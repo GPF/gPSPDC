@@ -161,7 +161,7 @@ extern u32 translation_gate_target_pc[MAX_TRANSLATION_GATES];
 
 #define ROM_BRANCH_HASH_SIZE (1024 * 64)
 
-u32 *rom_branch_hash[ROM_BRANCH_HASH_SIZE];
+extern u32 *rom_branch_hash[ROM_BRANCH_HASH_SIZE];
 
 void flush_translation_cache_rom();
 void flush_translation_cache_ram();

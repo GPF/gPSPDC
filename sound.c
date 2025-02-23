@@ -17,7 +17,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <SDL/SDL.h>
+#include "SDL.h"
 #include "common.h"
 
 u32 global_enable_audio = 1;
@@ -25,7 +25,7 @@ u32 global_enable_audio = 1;
 direct_sound_struct direct_sound_channel[2];
 gbc_sound_struct gbc_sound_channel[4];
 
-u32 sound_frequency = 44100;
+u32 sound_frequency = 22150;
 
 SDL_AudioSpec sound_settings;
 SDL_mutex *sound_mutex;
@@ -148,10 +148,10 @@ void sound_timer(fixed16_16 frequency_step, u32 channel)
   if(((ds->fifo_top - ds->fifo_base) % 32) <= 16)
   {
     if(dma[1].direct_sound_channel == channel)
-      dma_transfer(dma + 1);
+      gpsp_dma_transfer(dma + 1);
 
     if(dma[2].direct_sound_channel == channel)
-      dma_transfer(dma + 2);
+      gpsp_dma_transfer(dma + 2);
   }
 }
 
@@ -588,7 +588,6 @@ void update_gbc_sound(u32 cpu_ticks)
     source[i] = 0;                                                            \
   }                                                                           \
 
-
 void sound_callback(void *userdata, Uint8 *stream, int length)
 {
   u32 sample_length = length / 2;
@@ -600,8 +599,7 @@ void sound_callback(void *userdata, Uint8 *stream, int length)
 
   SDL_LockMutex(sound_mutex);
 
-  while(((gbc_sound_buffer_index - sound_buffer_base) % BUFFER_SIZE) <
-   length)
+  while(((gbc_sound_buffer_index - sound_buffer_base) % BUFFER_SIZE) < length)
   {
     SDL_CondWait(sound_cv, sound_mutex);
   }
@@ -621,6 +619,8 @@ void sound_callback(void *userdata, Uint8 *stream, int length)
       sound_copy(sound_buffer_base, length, normal);
       sound_buffer_base += sample_length;
     }
+    // Replace memcpy with Dreamcast-specific function
+    SDL_DC_SetSoundBuffer((Uint8 *)stream_base);
   }
   else
   {
@@ -637,10 +637,11 @@ void sound_callback(void *userdata, Uint8 *stream, int length)
       sound_copy_null(sound_buffer_base, length);
       sound_buffer_base += sample_length;
     }
+    // Still need to set the buffer even for null audio
+    SDL_DC_SetSoundBuffer((Uint8 *)stream_base);
   }
 
   SDL_CondSignal(sound_cv);
-
   SDL_UnlockMutex(sound_mutex);
 }
 

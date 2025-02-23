@@ -19,6 +19,17 @@
 
 #include "common.h"
 
+
+u8 bios_rom[1024 * 32];
+u32 bios_read_protect;
+
+u8 *memory_map_read[8 * 1024];
+u32 reg[64];
+u8 *memory_map_write[8 * 1024];
+
+flash_device_id_type flash_device_id;
+
+
 // This table is configured for sequential access on system defaults
 
 u32 waitstate_cycles_sequential[16][3] =
@@ -561,7 +572,7 @@ u32 function_cc read_eeprom()
                                                                               \
       address16(io_registers, (dma_number * 12) + 0xBA) = value;              \
       if(start_type == DMA_START_IMMEDIATELY)                                 \
-        return dma_transfer(dma + dma_number);                                \
+        return gpsp_dma_transfer(dma + dma_number);                                \
     }                                                                         \
   }                                                                           \
   else                                                                        \
@@ -2025,6 +2036,8 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
 
 #ifdef PSP_BUILD
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
+#elif _arch_dreamcast
+  sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
 #else
   sprintf(config_path, "%s\\%s", main_path, CONFIG_FILENAME);
 #endif
@@ -2119,7 +2132,10 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
 
 s32 load_gamepak_raw(char *name)
 {
-  file_open(gamepak_file, name, read);
+	char newname[100];
+	sprintf(newname,"/cd/gbaDC/%s",name);
+	fprintf(stderr,"loading %s\n",newname);
+  file_open(gamepak_file, newname, read);
 
   if(file_check_valid(gamepak_file))
   {
@@ -2778,7 +2794,7 @@ dma_region_type dma_region_map[16] =
       break;                                                                  \
   }                                                                           \
 
-cpu_alert_type dma_transfer(dma_transfer_type *dma)
+cpu_alert_type gpsp_dma_transfer(dma_transfer_type *dma)
 {
   u32 i;
   u32 length = dma->length;
@@ -2954,7 +2970,7 @@ void init_gamepak_buffer()
 {
   // Try to initialize 32MB (this is mainly for non-PSP platforms)
   gamepak_rom = NULL;
-
+#ifndef _arch_dreamcast
   gamepak_ram_buffer_size = 32 * 1024 * 1024;
   gamepak_rom = malloc(gamepak_ram_buffer_size);
 
@@ -2970,12 +2986,21 @@ void init_gamepak_buffer()
       gamepak_rom = malloc(gamepak_ram_buffer_size);
     }
   }
+#else
+      gamepak_ram_buffer_size = 8 * 1024 * 1024;
+      gamepak_rom = malloc(gamepak_ram_buffer_size);
+#endif
 
+#ifndef _arch_dreamcast
   // Here's assuming we'll have enough memory left over for this,
   // and that the above succeeded (if not we're in trouble all around)
   gamepak_ram_pages = gamepak_ram_buffer_size / (32 * 1024);
   gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) *
    gamepak_ram_pages);
+#else
+  gamepak_ram_pages = gamepak_ram_buffer_size / (8 * 1024);
+  gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) * gamepak_ram_pages);
+#endif
 }
 
 void init_memory()
@@ -3118,10 +3143,11 @@ void load_state(char *savestate_filename)
 
     savestate_block(read);
     file_close(savestate_file);
-
+#ifndef _arch_dreamcast
     flush_translation_cache_ram();
     flush_translation_cache_rom();
     flush_translation_cache_bios();
+#endif
 
     oam_update = 1;
     gbc_sound_update = 1;

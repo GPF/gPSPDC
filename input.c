@@ -473,6 +473,31 @@ gui_action_type get_gui_input()
         }
         break;
       }
+      case SDL_JOYHATMOTION:
+      {
+		if(event.jhat.value & SDL_HAT_UP)
+			gui_action = CURSOR_UP;
+
+		if(event.jhat.value & SDL_HAT_RIGHT)
+			gui_action = CURSOR_RIGHT;
+
+		if(event.jhat.value & SDL_HAT_DOWN)
+			gui_action = CURSOR_DOWN;
+
+		if(event.jhat.value & SDL_HAT_LEFT)
+			gui_action = CURSOR_LEFT;
+        break;
+      }
+      case SDL_JOYBUTTONDOWN:
+      {
+        if(event.jbutton.button ==0)
+			gui_action = CURSOR_SELECT;
+        if(event.jbutton.button ==1)
+			gui_action = CURSOR_BACK;
+        if(event.jbutton.button ==4)
+			gui_action = CURSOR_EXIT;
+        break;
+      }
     }
   }
 
@@ -485,7 +510,7 @@ gui_action_type get_gui_input_fs_hold(u32 button_id)
 {
   return get_gui_input();
 }
-
+int axlast=0;
 u32 update_input()
 {
   SDL_Event event;
@@ -511,13 +536,14 @@ u32 update_input()
           free(screen_copy);
 
           return ret_val;
-//          return adjust_frameskip(0);
         }
         else
 
         if(event.key.keysym.sym == SDLK_F1)
         {
+#ifndef _arch_dreamcast
           current_debug_state = STEP;
+#endif
         }
         else
 
@@ -544,7 +570,9 @@ u32 update_input()
 
         if(event.key.keysym.sym == SDLK_F3)
         {
+#ifndef _arch_dreamcast
           dump_translation_cache();
+#endif
         }
         else
 
@@ -588,12 +616,26 @@ u32 update_input()
         key &= ~(key_map(event.key.keysym.sym));
         break;
       }
-
       case SDL_JOYAXISMOTION:
       {
-/*        key = (key & 0xFF0F) | joy_axis_map(event.jaxis.value,
-         event.jaxis.axis);
-        trigger_key(key); */
+		  if(axlast){
+			  if (axlast==2)
+				key &= ~(BUTTON_L);
+			  if(axlast==3)
+			    key &= ~(BUTTON_R);
+
+			  if (axlast>0){
+				trigger_key(key);
+				axlast=0;
+			  }
+		  }
+		  else{
+		  if (event.jaxis.axis ==2)
+		  {key |= BUTTON_L;axlast=2;trigger_key(key);}
+		  if (event.jaxis.axis ==3)
+		  {key |= BUTTON_R;axlast=3;trigger_key(key);}
+		  }
+		
         break;
       }
 

@@ -20,18 +20,18 @@
 #ifndef SOUND_H
 #define SOUND_H
 
-#define BUFFER_SIZE 65536
+#define BUFFER_SIZE 32768
 
 // A lot of sound cards on PC can't handle such small buffers but this
 // seems to work well on PSP.
 
 #ifdef PSP_BUILD
 
-#define SOUND_BUFFER_SIZE 4096
+#define SOUND_BUFFER_SIZE 8192
 
 #else
 
-#define SOUND_BUFFER_SIZE 16384
+#define SOUND_BUFFER_SIZE 8192
 
 #endif
 

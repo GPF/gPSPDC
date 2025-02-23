@@ -49,8 +49,6 @@
 #define COLOR_FRAMESKIP_BAR color16(15, 31, 31)
 #define COLOR_HELP_TEXT     color16(16, 40, 24)
 
-int firstStart = 1;
-
 int sort_function(const void *dest_str_ptr, const void *src_str_ptr)
 {
   char *dest_str = *((char **)dest_str_ptr);
@@ -96,14 +94,7 @@ s32 load_file(u8 **wildcards, u8 *result)
   u32 repeat;
   u32 i;
   gui_action_type gui_action;
-
-  if (firstStart > 0)
-  {
-    return_value = -1;
-    repeat = 0;
-    firstStart = 0;
-  }
-
+  fs_chdir("/cd/gbaDC/");
   while(return_value == 1)
   {
     current_file_selection = 0;
@@ -125,7 +116,11 @@ s32 load_file(u8 **wildcards, u8 *result)
     chosen_file = 0;
     chosen_dir = 0;
 
+// #ifndef _arch_dreamcast
     getcwd(current_dir_name, MAX_PATH);
+// #else
+// 	strcpy(current_dir_name,"/cd/gDC/");
+// #endif
 
     current_dir = opendir(current_dir_name);
 
@@ -374,7 +369,11 @@ s32 load_file(u8 **wildcards, u8 *result)
           if(current_column == 1)
           {
             repeat = 0;
+#ifndef _arch_dreamcast
             chdir(dir_list[current_dir_selection]);
+#else
+			fs_chdir(dir_list[current_dir_selection]);
+#endif
           }
           else
           {
@@ -393,7 +392,11 @@ s32 load_file(u8 **wildcards, u8 *result)
             break;
 #endif
           repeat = 0;
+#ifndef _arch_dreamcast
           chdir("..");
+#else
+		  fs_chdir("..");
+#endif
           break;
 
         case CURSOR_EXIT:
@@ -665,7 +668,7 @@ s32 load_config_file()
   #ifdef PSP_BUILD
     sprintf(config_path, "%s/%s", main_path, GPSP_CONFIG_FILENAME);
   #else
-    sprintf(config_path, "%s\\%s", main_path, GPSP_CONFIG_FILENAME);
+    sprintf(config_path, "%s/%s", main_path, GPSP_CONFIG_FILENAME);
   #endif
 
   file_open(config_file, config_path, read);
@@ -760,7 +763,7 @@ s32 save_config_file()
   #ifdef PSP_BUILD
     sprintf(config_path, "%s/%s", main_path, GPSP_CONFIG_FILENAME);
   #else
-    sprintf(config_path, "%s\\%s", main_path, GPSP_CONFIG_FILENAME);
+    sprintf(config_path, "%s/%s", main_path, GPSP_CONFIG_FILENAME);
   #endif
 
   file_open(config_file, config_path, write);
@@ -909,6 +912,7 @@ u32 menu(u16 *original_screen)
     "Right shoulder button on GBA.",
     "Start button on GBA.",
     "Select button on GBA.",
+    "Brings up frameskip adjust bar and menu access.",
     "Jumps directly to the menu.",
     "Toggles fastforward on/off (don't expect it to do much or anything)",
     "Loads the game state from the current slot.",

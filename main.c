@@ -21,9 +21,10 @@
 
 #ifdef PSP_BUILD
 
-void vblank_interrupt_handler(u32 sub, u32 *parg);
+//PSP_MODULE_INFO("gpSP", 0x1000, 0, 6);
+//PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
 
-PSP_HEAP_SIZE_MAX();
+void vblank_interrupt_handler(u32 sub, u32 *parg);
 
 #endif
 
@@ -116,7 +117,8 @@ volatile u8 main_path[512];
       timer[timer_number].count +=                                            \
        (timer[timer_number].reload << timer[timer_number].prescale);          \
     }                                                                         \
-  }                                                                           \
+  }                                                                           
+
 
 u8 *file_ext[] = { ".gba", ".bin", ".zip", NULL };
 
@@ -143,10 +145,11 @@ void init_main()
 
   execute_cycles = 960;
   video_count = 960;
-
+#ifndef _arch_dreamcast
   flush_translation_cache_rom();
   flush_translation_cache_ram();
   flush_translation_cache_bios();
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -162,18 +165,23 @@ int main(int argc, char *argv[])
    vblank_interrupt_handler, NULL);
   sceKernelEnableSubIntr(PSP_VBLANK_INT, 0);
 #else
-  freopen("CON", "wb", stdout);
+  //freopen("CON", "wb", stdout);
 #endif
-
+printf("init_gamepak_buffer...\n");
   init_gamepak_buffer();
 
   // Copy the directory path of the executable into main_path
-  getcwd(main_path, 512);
+#ifndef _arch_dreamcast
+  getcwd(main_path);
+#else
+	strcpy(main_path,"/cd/gbaDC/");
+#endif
+printf("load_config_file...\n");
   load_config_file();
 
   gamepak_filename[0] = 0;
-
-  if(load_bios("gba_bios.bin") == -1)
+printf("load_bios...\n");
+  if(load_bios("/cd/gba_bios.bin") == -1)
   {
 #ifdef PSP_BUILD
     gui_action_type gui_action = CURSOR_NONE;
@@ -197,21 +205,26 @@ int main(int argc, char *argv[])
     }
 
     quit();
+#else
+printf("Sorry, but gpSP requires a Gameboy Advance BIOS image to run\n");
+quit();
 #endif
   }
 
 #ifdef PSP_BUILD
   delay_us(2500000);
 #endif
-
+printf("Initialize...\ninit_main\n");
   init_main();
+  printf("init_sound\n");
   init_sound();
-
+printf("init_video\n");
   init_video();
+printf("init_input\n");
   init_input();
-
+printf("video_resolution_large\n");
   video_resolution_large();
-
+printf("Loading files...\n");
   if(argc > 1)
   {
     if(load_gamepak(argv[1]) == -1)
@@ -228,8 +241,10 @@ int main(int argc, char *argv[])
   }
   else
   {
+
     if(load_file(file_ext, load_filename) == -1)
     {
+      printf("Loading menu...\n");
       menu(copy_screen());
     }
     else
@@ -256,8 +271,8 @@ int main(int argc, char *argv[])
 #ifdef PSP_BUILD
   execute_arm_translate(execute_cycles);
 #else
-  execute_arm_translate(execute_cycles);
-//  execute_arm(execute_cycles);
+//  execute_arm_translate(execute_cycles);
+  execute_arm(execute_cycles);
 #endif
   return 0;
 }
@@ -325,7 +340,7 @@ u32 update_gba()
         for(i = 0; i < 4; i++)
         {
           if(dma[i].start_type == DMA_START_HBLANK)
-            dma_transfer(dma + i);
+            gpsp_dma_transfer(dma + i);
         }
       }
 
@@ -363,7 +378,7 @@ u32 update_gba()
         for(i = 0; i < 4; i++)
         {
           if(dma[i].start_type == DMA_START_VBLANK)
-            dma_transfer(dma + i);
+            gpsp_dma_transfer(dma + i);
         }
       }
       else
@@ -606,10 +621,10 @@ void quit()
   if(!update_backup_flag)
     update_backup_force();
 
-//  sound_exit(0);
+  sound_exit();
 
 #ifdef PSP_BUILD
-    sceKernelExitGame();
+  sceKernelExitGame();
 #else
   SDL_Quit();
   exit(0);

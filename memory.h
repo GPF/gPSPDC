@@ -164,7 +164,7 @@ cpu_alert_type function_cc write_memory32(u32 address, u32 value);
 extern u8 *memory_regions[16];
 extern u32 memory_limits[16];
 
-u32 waitstate_cycles_sequential[16][3];
+extern u32 waitstate_cycles_sequential[16][3];
 
 extern u32 gamepak_size;
 extern u8 gamepak_title[13];
@@ -172,7 +172,7 @@ extern u8 gamepak_code[5];
 extern u8 gamepak_maker[3];
 extern u8 gamepak_filename[512];
 
-cpu_alert_type dma_transfer(dma_transfer_type *dma);
+cpu_alert_type gpsp_dma_transfer(dma_transfer_type *dma);
 u8 *memory_region(u32 address, u32 *memory_limit);
 u32 load_gamepak(char *name);
 u32 load_backup(char *name);
@@ -193,7 +193,7 @@ extern u32 gbc_sound_update;
 extern u32 gbc_sound_wave_update;
 extern dma_transfer_type dma[4];
 
-u8 *write_mem_ptr;
+extern u8 *write_mem_ptr;
 
 #ifdef PSP_BUILD_VRAM_STORAGE
 

@@ -77,7 +77,7 @@
 
   #define file_tag_type s32
 #else
-  #include <SDL/SDL.h>
+  #include "SDL.h"
 
   #define function_cc __attribute__((regparm(2)))
 
@@ -171,7 +171,7 @@ typedef u32 fixed16_16;
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <SDL/SDL.h>
+#include "SDL.h"
 #include "cpu.h"
 #include "memory.h"
 #include "video.h"

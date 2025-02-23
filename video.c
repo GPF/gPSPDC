@@ -20,6 +20,11 @@
 #include "common.h"
 #include "font.h"
 
+#ifdef _arch_dreamcast
+//#include <kos.h>
+#include <SDL_dreamcast.h>
+#endif
+
 #ifdef PSP_BUILD
 
 #include <pspctrl.h>
@@ -3404,8 +3409,32 @@ void init_video()
 
 void init_video()
 {
-  SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE);
-  screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16, 0);
+ #ifdef _arch_dreamcast
+
+		//SDL_Joystick *_joystick = SDL_JoystickOpen(0);
+		// SDL_DC_SetVideoDriver(SDL_DC_DMA_VIDEO);
+    // SDL_DC_SetWindow(240,160);
+		//SDL_DC_VerticalWait(SDL_FALSE);
+		//SDL_DC_EmulateKeyboard(SDL_TRUE);
+        SDL_DC_MapKey(0, SDL_DC_LEFT, SDLK_LEFT);
+        SDL_DC_MapKey(0, SDL_DC_RIGHT, SDLK_RIGHT);
+        SDL_DC_MapKey(0, SDL_DC_UP, SDLK_UP);
+        SDL_DC_MapKey(0, SDL_DC_DOWN, SDLK_DOWN);
+
+        SDL_DC_MapKey(0, SDL_DC_START, SDLK_RETURN);
+        SDL_DC_MapKey(0, SDL_DC_A, SDLK_LALT);
+		SDL_DC_MapKey(0, SDL_DC_X, SDLK_LCTRL);
+		SDL_DC_MapKey(0, SDL_DC_Y, SDLK_LSHIFT);
+		SDL_DC_MapKey(0, SDL_DC_B, SDLK_RSHIFT);
+
+
+#endif  
+  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) < 0) {
+                             printf("Can't init SDL\n");
+                             return;
+                             }
+  printf("SDL initialized\nSet video mode to %dx%d\n",240 * video_scale, 160 * video_scale);
+  screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
   SDL_ShowCursor(0);
 }
 
@@ -3414,7 +3443,6 @@ void init_video()
 video_scale_type screen_scale = scaled_aspect;
 video_scale_type current_scale = scaled_aspect;
 video_filter_type screen_filter = filter_bilinear;
-
 
 #ifdef PSP_BUILD
 
@@ -3522,7 +3550,7 @@ void video_resolution_large()
   if(current_scale != unscaled)
   {
     current_scale = unscaled;
-    screen = SDL_SetVideoMode(480, 272, 16, 0);
+    screen = SDL_SetVideoMode(480, 272, 16, SDL_HWSURFACE);
     resolution_width = 480;
     resolution_height = 272;
   }
@@ -3533,8 +3561,10 @@ void video_resolution_small()
   if(current_scale != screen_scale)
   {
     current_scale = screen_scale;
-    screen = SDL_SetVideoMode(small_resolution_width * video_scale,
-     small_resolution_height * video_scale, 16, 0);
+    SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
+    screen = SDL_SetVideoMode(256 * video_scale,
+     256 * video_scale, 16, SDL_HWSURFACE);
+     SDL_DC_SetWindow(small_resolution_width,small_resolution_height);      
     resolution_width = small_resolution_width;
     resolution_height = small_resolution_height;
   }

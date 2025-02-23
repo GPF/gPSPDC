@@ -2652,6 +2652,8 @@ u32 bios_block_tag_top = 0x0101;
 #define rom_translation_region  TRANSLATION_REGION_ROM
 #define bios_translation_region TRANSLATION_REGION_BIOS
 
+#ifndef _arch_dreamcast
+
 #define block_lookup_translate_arm(mem_type, smc_enable)                      \
   translation_result = translate_block_arm(pc, mem_type##_translation_region, \
    smc_enable)                                                                \
@@ -2672,6 +2674,7 @@ u32 bios_block_tag_top = 0x0101;
      mem_type##_translation_region, smc_enable);                              \
   }                                                                           \
 
+#endif
 // 0x0101 is the smallest tag that can be used. 0xFFFF is marked
 // in the middle of blocks and used for write guarding, it doesn't
 // indicate a valid block either (it's okay to compile a new block
@@ -2836,10 +2839,11 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
   return block_address;                                                       \
 }                                                                             \
 
+#ifndef _arch_dreamcast
 block_lookup_address_builder(arm);
 block_lookup_address_builder(thumb);
 block_lookup_address_builder(dual);
-
+#endif
 // Potential exit point: If the rd field is pc for instructions is 0x0F,
 // the instruction is b/bl/bx, or the instruction is ldm with PC in the
 // register list.
@@ -2927,10 +2931,14 @@ block_lookup_address_builder(dual);
     case 0x3F:                                                                \
       block_data[block_data_position].condition |= 0x20;                      \
     break;                                                                    \
-  }                                                                           \
+  }
+                                                                           \
+#ifndef _arch_dreamcast
 
 #define arm_link_block()                                                      \
   translation_target = block_lookup_address_arm(branch_target)                \
+
+#endif
 
 #define arm_instruction_width 4
 
@@ -3385,7 +3393,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
   }                                                                           \
                                                                               \
   return 0;                                                                   \
-}                                                                             \
+}                                                                             
 
 translate_block_builder(arm);
 translate_block_builder(thumb);

@@ -25,7 +25,6 @@
 .global _execute_store_u8
 .global _execute_store_u16
 .global _execute_store_u32
-.global _execute_store_cpsr
 .global _execute_arm_translate
 .global _step_debug_x86
 
@@ -33,12 +32,9 @@
 .global _memory_map_write
 .global _reg
 
-.global _oam_update
-
 .global _iwram
 .global _ewram
 .global _vram
-.global _oam_ram
 .global _bios_rom
 .global _io_registers
 
@@ -52,9 +48,6 @@
 .equ REG_C_FLAG,        (18 * 4)
 .equ REG_V_FLAG,        (19 * 4)
 .equ REG_CPSR,          (20 * 4)
-.equ REG_SAVE,          (21 * 4)
-.equ REG_SAVE2,         (22 * 4)
-.equ REG_SAVE3,         (23 * 4)
 .equ CPU_MODE,          (29 * 4)
 .equ CPU_HALT_STATE,    (30 * 4)
 .equ CHANGED_PC_STATUS, (31 * 4)
@@ -98,13 +91,9 @@
 
 # eax: current address
 
-st:
-  .asciz "u\n"
-
 _x86_update_gba:
   mov %eax, REG_PC(%ebx)      # current PC = eax
   collapse_flags              # update cpsr, trashes ecx and edx
-
   call _update_gba            # process the next event
 
   mov %eax, %edi              # edi = new cycle count
@@ -139,103 +128,14 @@ _x86_indirect_branch_dual:
   call _block_lookup_address_dual
   jmp *%eax
 
-
-# General ext memory routines
-
-ext_store_ignore:
-  ret                         # ignore these writes
-
-write_epilogue:
-  cmp $0, %eax                # 0 return means nothing happened
-  jz no_alert                 # if so we can leave
-
-  collapse_flags              # make sure flags are good for function call
-  cmp $2, %eax                # see if it was an SMC trigger
-  je smc_write
-
-alert_loop:
-  call _update_gba            # process the next event
-
-  # see if the halt status has changed
-  mov CPU_HALT_STATE(%ebx), %edx
-
-  cmp $0, %edx                # 0 means it has
-  jnz alert_loop              # if not go again
-
-  mov %eax, %edi              # edi = new cycle count
-  jmp lookup_pc               # pc has definitely changed
-
-no_alert:
-  ret
-
-ext_store_eeprom:
-  jmp _write_eeprom           # perform eeprom write
-
-
-# 8bit ext memory routines
-
-ext_store_io8:
-  and $0x3FF, %eax            # wrap around address
-  and $0xFF, %edx
-  call _write_io_register8    # perform 8bit I/O register write
-  jmp write_epilogue          # see if it requires any system update
-
-ext_store_palette8:
-  and $0x3FE, %eax            # wrap around address and align to 16bits
-  jmp ext_store_palette16b    # perform 16bit palette write
-
-ext_store_vram8:
-  and $0x1FFFE, %eax          # wrap around address and align to 16bits
-  mov %dl, %dh                # copy lower 8bits of value into full 16bits
-  cmp $0x18000, %eax          # see if address is in upper region
-  jb ext_store_vram8b
-  sub $0x8000, %eax           # if so wrap down
-
-ext_store_vram8b:
-  mov %dx, _vram(%eax)        # perform 16bit store
-  ret
-
-ext_store_oam8:
-  movl $1, _oam_update        # flag OAM update
-  and $0x3FE, %eax            # wrap around address and align to 16bits
-  mov %dl, %dh                # copy lower 8bits of value into full 16bits
-  mov %dx, _oam_ram(%eax)     # perform 16bit store
-  ret
-
-ext_store_backup:
-  and $0xFF, %edx             # make value 8bit
-  and $0xFFFF, %eax           # mask address
-  jmp _write_backup           # perform backup write
-
-ext_store_u8_jtable:
-  .long ext_store_ignore      # 0x00 BIOS, ignore
-  .long ext_store_ignore      # 0x01 invalid, ignore
-  .long ext_store_ignore      # 0x02 EWRAM, should have been hit already
-  .long ext_store_ignore      # 0x03 IWRAM, should have been hit already
-  .long ext_store_io8         # 0x04 I/O registers
-  .long ext_store_palette8    # 0x05 Palette RAM
-  .long ext_store_vram8       # 0x06 VRAM
-  .long ext_store_oam8        # 0x07 OAM RAM
-  .long ext_store_ignore      # 0x08 gamepak (no RTC accepted in 8bit)
-  .long ext_store_ignore      # 0x09 gamepak, ignore
-  .long ext_store_ignore      # 0x0A gamepak, ignore
-  .long ext_store_ignore      # 0x0B gamepak, ignore
-  .long ext_store_ignore      # 0x0C gamepak, ignore
-  .long ext_store_eeprom      # 0x0D EEPROM (possibly)
-  .long ext_store_backup      # 0x0E Flash ROM/SRAM
-
-ext_store_u8:
-  mov %eax, %ecx              # ecx = address
-  shr $24, %ecx               # ecx = address >> 24
-  cmp $15, %ecx
-  ja ext_store_ignore
-  # ecx = ext_store_u8_jtable[address >> 24]
-  mov ext_store_u8_jtable(, %ecx, 4), %ecx
-  jmp *%ecx                   # jump to table index
-
 # eax: address to write to
 # edx: value to write
 # ecx: current pc
+
+.macro execute_store_ext_builder ext_function
+  call \ext_function
+  jmp write_epilogue
+.endm
 
 _execute_store_u8:
   mov %ecx, REG_PC(%ebx)      # write out the PC
@@ -253,6 +153,9 @@ _execute_store_u8:
   testb $0xFF, -32768(%eax, %ecx)
   jne smc_write
   ret                         # return
+
+ext_store_u8:
+  execute_store_ext_builder _write_memory8
 
 _execute_store_u16:
   mov %ecx, REG_PC(%ebx)      # write out the PC
@@ -272,76 +175,8 @@ _execute_store_u16:
   jne smc_write
   ret                         # return
 
-# 16bit ext memory routines
-
-ext_store_io16:
-  and $0x3FF, %eax            # wrap around address
-  and $0xFFFF, %edx
-  call _write_io_register16   # perform 16bit I/O register write
-  jmp write_epilogue          # see if it requires any system update
-
-ext_store_palette16:
-  and $0x3FF, %eax            # wrap around address
-
-ext_store_palette16b:         # entry point for 8bit write
-  mov %dx, _palette_ram(%eax) # write out palette value
-  mov %edx, %ecx              # cx = dx
-  shl $11, %ecx               # cx <<= 11 (red component is in high bits)
-  mov %dh, %cl                # bottom bits of cx = top bits of dx
-  shr $2, %cl                 # move the blue component to the bottom of cl
-  and $0x03E0, %dx            # isolate green component of dx
-  shl $1, %dx                 # make green component 6bits
-  or %edx, %ecx               # combine green component into ecx
-  # write out the freshly converted palette value
-  mov %cx, _palette_ram_converted(%eax)
-  ret                         # done
-
-ext_store_vram16:
-  and $0x1FFFF, %eax          # wrap around address
-  cmp $0x18000, %eax          # see if address is in upper region
-  jb ext_store_vram16b
-  sub $0x8000, %eax           # if so wrap down
-
-ext_store_vram16b:
-  mov %dx, _vram(%eax)        # perform 16bit store
-  ret
-
-ext_store_oam16:
-  movl $1, _oam_update        # flag OAM update
-  and $0x3FF, %eax            # wrap around address
-  mov %dx, _oam_ram(%eax)     # perform 16bit store
-  ret
-
-ext_store_rtc:
-  and $0xFFFF, %edx           # make value 16bit
-  and $0xFF, %eax             # mask address
-  jmp _write_rtc              # write out RTC register
-
-ext_store_u16_jtable:
-  .long ext_store_ignore      # 0x00 BIOS, ignore
-  .long ext_store_ignore      # 0x01 invalid, ignore
-  .long ext_store_ignore      # 0x02 EWRAM, should have been hit already
-  .long ext_store_ignore      # 0x03 IWRAM, should have been hit already
-  .long ext_store_io16        # 0x04 I/O registers
-  .long ext_store_palette16   # 0x05 Palette RAM
-  .long ext_store_vram16      # 0x06 VRAM
-  .long ext_store_oam16       # 0x07 OAM RAM
-  .long ext_store_rtc         # 0x08 gamepak or RTC
-  .long ext_store_ignore      # 0x09 gamepak, ignore
-  .long ext_store_ignore      # 0x0A gamepak, ignore
-  .long ext_store_ignore      # 0x0B gamepak, ignore
-  .long ext_store_ignore      # 0x0C gamepak, ignore
-  .long ext_store_eeprom      # 0x0D EEPROM (possibly)
-  .long ext_store_ignore      # 0x0E Flash ROM/SRAM must be 8bit
-
 ext_store_u16:
-  mov %eax, %ecx              # ecx = address
-  shr $24, %ecx               # ecx = address >> 24
-  cmp $15, %ecx
-  ja ext_store_ignore
-  # ecx = ext_store_u16_jtable[address >> 24]
-  mov ext_store_u16_jtable(, %ecx, 4), %ecx
-  jmp *%ecx                   # jump to table index
+  execute_store_ext_builder _write_memory16
 
 _execute_store_u32:
   mov %ecx, REG_PC(%ebx)      # write out the PC
@@ -361,87 +196,35 @@ _execute_store_u32:
   jne smc_write
   ret                         # return it
 
-# 32bit ext memory routines
-
-ext_store_io32:
-  and $0x3FF, %eax            # wrap around address
-  call _write_io_register32   # perform 32bit I/O register write
-  jmp write_epilogue          # see if it requires any system update
-
-ext_store_palette32:
-  and $0x3FF, %eax            # wrap around address
-  call ext_store_palette16b   # write first 16bits
-  add $2, %eax                # go to next address
-  shr $16, %edx               # go to next 16bits
-  jmp ext_store_palette16b    # write next 16bits
-
-ext_store_vram32:
-  and $0x1FFFF, %eax          # wrap around address
-  cmp $0x18000, %eax          # see if address is in upper region
-  jb ext_store_vram32b
-  sub $0x8000, %eax           # if so wrap down
-
-ext_store_vram32b:
-  mov %edx, _vram(%eax)       # perform 32bit store
-  ret
-
-ext_store_oam32:
-  movl $1, _oam_update        # flag OAM update
-  and $0x3FF, %eax            # wrap around address
-  mov %edx, _oam_ram(%eax)    # perform 32bit store
-  ret
-
-ext_store_u32_jtable:
-  .long ext_store_ignore      # 0x00 BIOS, ignore
-  .long ext_store_ignore      # 0x01 invalid, ignore
-  .long ext_store_ignore      # 0x02 EWRAM, should have been hit already
-  .long ext_store_ignore      # 0x03 IWRAM, should have been hit already
-  .long ext_store_io32        # 0x04 I/O registers
-  .long ext_store_palette32   # 0x05 Palette RAM
-  .long ext_store_vram32      # 0x06 VRAM
-  .long ext_store_oam32       # 0x07 OAM RAM
-  .long ext_store_ignore      # 0x08 gamepak, ignore (no RTC in 32bit)
-  .long ext_store_ignore      # 0x09 gamepak, ignore
-  .long ext_store_ignore      # 0x0A gamepak, ignore
-  .long ext_store_ignore      # 0x0B gamepak, ignore
-  .long ext_store_ignore      # 0x0C gamepak, ignore
-  .long ext_store_eeprom      # 0x0D EEPROM (possibly)
-  .long ext_store_ignore      # 0x0E Flash ROM/SRAM must be 8bit
-
-
 ext_store_u32:
-  mov %eax, %ecx              # ecx = address
-  shr $24, %ecx               # ecx = address >> 24
-  cmp $15, %ecx
-  ja ext_store_ignore
-  # ecx = ext_store_u32_jtable[address >> 24]
-  mov ext_store_u32_jtable(, %ecx, 4), %ecx
-  jmp *%ecx
+  execute_store_ext_builder _write_memory32
 
-# %eax = new_cpsr
-# %edx = store_mask
+write_epilogue:
+  cmp $0, %eax                # 0 return means nothing happened
+  jz no_alert                 # if so we can leave
 
-_execute_store_cpsr:
-  mov %edx, REG_SAVE(%ebx)        # write out store_mask
-  mov %ecx, REG_SAVE2(%ebx)       # write out PC too
-  mov %eax, %ecx                  # ecx = new_cpsr
-  and %edx, %ecx                  # ecx = new_cpsr & store_mask
-  mov REG_CPSR(%ebx), %eax        # eax = cpsr
-  not %edx                        # edx = ~store_mask
-  and %edx, %eax                  # eax = cpsr & ~store_mask
-  or %ecx, %eax                   # eax = new cpsr combined with old
-  extract_flags                   # extract flags
-  call _execute_store_cpsr_body   # do the dirty work in this C function
+  collapse_flags              # make sure flags are good for function call
+  cmp $2, %eax                # see if it was an SMC trigger
+  je smc_write
 
-  cmp $0, %eax                    # see if return value is 0
-  jnz changed_pc_cpsr             # might have changed the PC
+alert_loop:
+  call _update_gba            # process the next event
+  # see if the halt status has changed
+  mov CPU_HALT_STATE(%ebx), %edx
 
-  ret                             # return
+  cmp $0, %edx                # 0 means it has
+  jnz alert_loop              # if not go again
 
-changed_pc_cpsr:
-  add $4, %esp                    # get rid of current return address
-  call _block_lookup_address_arm  # lookup new PC
-  jmp *%eax
+  mov %eax, %edi              # edi = new cycle count
+  jmp lookup_pc               # pc has definitely changed
+
+no_alert:
+  ret
+
+#  execute_store_epilogue_builder smc_thumb
+
+str:
+  .asciz "looking up pc\n"
 
 smc_write:
   call _flush_translation_cache_ram
@@ -474,7 +257,6 @@ _execute_arm_translate:
 
 _step_debug_x86:
   collapse_flags
-#  mov $100, %edi
   mov %edi, %edx
   jmp _step_debug
 
