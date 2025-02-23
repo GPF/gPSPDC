@@ -1,5 +1,6 @@
 -- gameplaySP  Gameboy Advance emulator for Playstation Portable --
 
+This is an update to and update of my original Dreamcast port from https://dcemulation.org/phpBB/viewtopic.php?style=48&t=98186
 
 -- Release log --
 
