@@ -79,7 +79,11 @@
 #else
   #include "SDL.h"
 
+  #ifndef _arch_dreamcast
   #define function_cc __attribute__((regparm(2)))
+  #else
+  #define function_cc
+  #endif 
 
   typedef unsigned char u8;
   typedef signed char s8;

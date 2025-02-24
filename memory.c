@@ -1974,7 +1974,7 @@ void update_backup_force()
   save_backup(backup_filename);
 }
 
-#define CONFIG_FILENAME "game_config.txt"
+#define CONFIG_FILENAME "/cd/game_config.txt"
 
 u8 *skip_spaces(u8 *line_ptr)
 {
