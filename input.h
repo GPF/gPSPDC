@@ -20,6 +20,7 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+void get_savestate_filename_noshot(u32 slot, u8 *name_buffer);
 typedef enum
 {
   BUTTON_L = 0x200,

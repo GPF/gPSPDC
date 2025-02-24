@@ -18,7 +18,8 @@
  */
 
 #include "common.h"
-
+#include "memory.h"
+#include "zip.h"
 
 u8 bios_rom[1024 * 32];
 u32 bios_read_protect;

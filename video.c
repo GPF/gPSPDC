@@ -19,7 +19,7 @@
 
 #include "common.h"
 #include "font.h"
-
+#include "video.h"
 #ifdef _arch_dreamcast
 //#include <kos.h>
 #include <SDL_dreamcast.h>

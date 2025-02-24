@@ -20,6 +20,9 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+void init_gamepak_buffer();
+u32 load_file_zip();
+
 typedef enum
 {
   DMA_START_IMMEDIATELY,

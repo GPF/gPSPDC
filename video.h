@@ -81,4 +81,6 @@ extern video_scale_type screen_scale;
 extern video_scale_type current_scale;
 extern video_filter_type screen_filter;
 
+void set_gba_resolution(video_scale_type scale);
+void change_ext(u8 *src, u8 *buffer, u8 *extension);
 #endif

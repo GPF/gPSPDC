@@ -20,6 +20,7 @@
 #ifndef CPU_H
 #define CPU_H
 
+void init_cpu();
 // System mode and user mode are represented as the same here
 
 typedef enum

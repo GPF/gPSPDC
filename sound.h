@@ -20,6 +20,8 @@
 #ifndef SOUND_H
 #define SOUND_H
 
+void reset_sound();
+void sound_exit();
 #define BUFFER_SIZE 32768
 
 // A lot of sound cards on PC can't handle such small buffers but this

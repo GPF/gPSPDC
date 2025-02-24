@@ -18,7 +18,9 @@
  */
 
 #include "common.h"
-
+#include "sound.h"
+#include "cpu.h"
+#include "video.h"
 #ifdef PSP_BUILD
 
 //PSP_MODULE_INFO("gpSP", 0x1000, 0, 6);

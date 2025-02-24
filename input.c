@@ -18,7 +18,7 @@
  */
 
 #include "common.h"
-
+#include "input.h"
 // Special thanks to psp298 for the analog->dpad code!
 
 void trigger_key(u32 key)

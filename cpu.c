@@ -2968,7 +2968,7 @@ char *reg_names[16] =
           reg[REG_N_FLAG] = n_flag;                                           \
           reg[REG_V_FLAG] = v_flag;                                           \
           reg[REG_Z_FLAG] = z_flag;                                           \
-          return;                                                             \
+          return 0;                                                             \
           break;                                                              \
                                                                               \
         /* Jump to BIOS SWI handler */                                        \
@@ -3922,14 +3922,14 @@ void print_stack()
 #endif
 }
 
-void print_arm_debug(cycles)
+void print_arm_debug(int cycles)
 {
 #ifndef _arch_dreamcast
   print_arm_instruction();
 #endif
 }
 
-void print_thumb_debug(cycles)
+void print_thumb_debug(int cycles)
 {
 #ifndef _arch_dreamcast
   print_thumb_instruction();

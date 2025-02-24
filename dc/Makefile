@@ -9,7 +9,7 @@ KOS_ROMDISK_DIR = romdisk
 
 include $(KOS_BASE)/Makefile.rules
 
-KOS_CFLAGS += -D_arch_dreamcast=1 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-return-mismatch \
+KOS_CFLAGS += -D_arch_dreamcast=1   \
     -I$(KOS_BASE)/addons/include \
     -I$(KOS_BASE)/addons/include/SDL \
     -I$(KOS_BASE)/../kos-ports/include/zlib \
