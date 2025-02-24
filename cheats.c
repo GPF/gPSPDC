@@ -109,13 +109,14 @@ void add_cheats(u8 *cheats_filename)
         strncpy(cheats[num_cheats].cheat_name, name_ptr, CHEAT_NAME_LENGTH - 1);
         cheats[num_cheats].cheat_name[CHEAT_NAME_LENGTH - 1] = 0;
         cheat_name_length = strlen(cheats[num_cheats].cheat_name);
-        if(cheat_name_length &&
-         (cheats[num_cheats].cheat_name[cheat_name_length - 1] == '\n') ||
-         (cheats[num_cheats].cheat_name[cheat_name_length - 1] == '\r'))
-        {
+        if (cheat_name_length > 0 &&
+          ((cheats[num_cheats].cheat_name[cheat_name_length - 1] == '\n') ||
+           (cheats[num_cheats].cheat_name[cheat_name_length - 1] == '\r')))
+      {
           cheats[num_cheats].cheat_name[cheat_name_length - 1] = 0;
           cheat_name_length--;
-        }
+      }
+      
 
         if(cheat_name_length &&
          cheats[num_cheats].cheat_name[cheat_name_length - 1] == '\r')

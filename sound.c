@@ -25,7 +25,7 @@ u32 global_enable_audio = 1;
 direct_sound_struct direct_sound_channel[2];
 gbc_sound_struct gbc_sound_channel[4];
 
-u32 sound_frequency = 22150;
+u32 sound_frequency = 22050;
 
 SDL_AudioSpec sound_settings;
 SDL_mutex *sound_mutex;
@@ -619,8 +619,6 @@ void sound_callback(void *userdata, Uint8 *stream, int length)
       sound_copy(sound_buffer_base, length, normal);
       sound_buffer_base += sample_length;
     }
-    // Replace memcpy with Dreamcast-specific function
-    SDL_DC_SetSoundBuffer((Uint8 *)stream_base);
   }
   else
   {
@@ -637,8 +635,6 @@ void sound_callback(void *userdata, Uint8 *stream, int length)
       sound_copy_null(sound_buffer_base, length);
       sound_buffer_base += sample_length;
     }
-    // Still need to set the buffer even for null audio
-    SDL_DC_SetSoundBuffer((Uint8 *)stream_base);
   }
 
   SDL_CondSignal(sound_cv);
