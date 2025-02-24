@@ -3551,9 +3551,11 @@ void video_resolution_large()
   if(current_scale != unscaled)
   {
     current_scale = unscaled;
-    screen = SDL_SetVideoMode(480, 272, 16, SDL_HWSURFACE);
+    SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
+    screen = SDL_SetVideoMode(512, 512, 16, SDL_HWSURFACE);
     resolution_width = 480;
     resolution_height = 272;
+    SDL_DC_SetWindow(resolution_width,resolution_height);
   }
 }
 
