@@ -74,7 +74,7 @@ u32 synchronize_flag = 1;
 
 u32 update_backup_flag = 1;
 u32 clock_speed = 333;
-volatile u8 main_path[512];
+char main_path[512];
 
 #define check_count(count_var)                                                \
   if(count_var < execute_cycles)                                              \
@@ -161,6 +161,9 @@ int main(int argc, char *argv[])
   u32 ticks;
   u32 dispstat;
   u8 load_filename[512];
+#ifdef _arch_dreamcast
+  fs_chdir("/cd/gbaDC/");
+#endif
 
 #ifdef PSP_BUILD
   sceKernelRegisterSubIntrHandler(PSP_VBLANK_INT, 0,
@@ -173,11 +176,11 @@ printf("init_gamepak_buffer...\n");
   init_gamepak_buffer();
 
   // Copy the directory path of the executable into main_path
-#ifndef _arch_dreamcast
-  getcwd(main_path);
-#else
-	strcpy(main_path,"/cd/gbaDC/");
-#endif
+// #ifndef _arch_dreamcast
+  getcwd(main_path,512);
+// #else
+	// strcpy((main_path,"/cd/gbaDC/");
+// #endif
 printf("load_config_file...\n");
   load_config_file();
 

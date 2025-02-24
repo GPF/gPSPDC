@@ -68,7 +68,7 @@ s32 load_file(u8 **wildcards, u8 *result)
   DIR *current_dir;
   struct dirent *current_file;
   struct stat file_info;
-  u8 current_dir_name[MAX_PATH];
+  char current_dir_name[MAX_PATH];
   u8 current_dir_short[81];
   u32 current_dir_length;
   u32 total_filenames_allocated;
@@ -77,10 +77,11 @@ s32 load_file(u8 **wildcards, u8 *result)
   u8 **dir_list;
   u32 num_files;
   u32 num_dirs;
-  u8 *file_name;
+  char *file_name;
   u32 file_name_length;
   u32 ext_pos = -1;
-  u32 chosen_file, chosen_dir;
+  // u32 chosen_file;
+  // u32 chosen_dir;
   u32 dialog_result = 1;
   s32 return_value = 1;
   u32 current_file_selection;
@@ -113,8 +114,8 @@ s32 load_file(u8 **wildcards, u8 *result)
 
     num_files = 0;
     num_dirs = 0;
-    chosen_file = 0;
-    chosen_dir = 0;
+    // chosen_file = 0;
+    // chosen_dir = 0;
 
 // #ifndef _arch_dreamcast
     getcwd(current_dir_name, MAX_PATH);
@@ -143,7 +144,7 @@ s32 load_file(u8 **wildcards, u8 *result)
           {
             dir_list[num_dirs] =
              (u8 *)malloc(file_name_length + 1);
-            strcpy(dir_list[num_dirs], file_name);
+            strcpy((char*)dir_list[num_dirs], file_name);
 
             num_dirs++;
           }
@@ -165,12 +166,12 @@ s32 load_file(u8 **wildcards, u8 *result)
               for(i = 0; wildcards[i] != NULL; i++)
               {
                 if(!strcasecmp((file_name + ext_pos),
-                 wildcards[i]))
+                 (char*)wildcards[i]))
                 {
                   file_list[num_files] =
                    (u8 *)malloc(file_name_length + 1);
 
-                  strcpy(file_list[num_files], file_name);
+                  strcpy((char*)file_list[num_files], file_name);
 
                   num_files++;
                   break;
@@ -232,7 +233,7 @@ s32 load_file(u8 **wildcards, u8 *result)
     {
       flip_screen();
 
-      print_string(current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
+      print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
       print_string("Press X to return to the main menu.",
        COLOR_HELP_TEXT, COLOR_BG, 20, 260);
 
@@ -244,12 +245,12 @@ s32 load_file(u8 **wildcards, u8 *result)
           if((current_file_number == current_file_selection) &&
            (current_column == 0))
           {
-            print_string(file_list[current_file_number], COLOR_ACTIVE_ITEM,
+            print_string((char*)file_list[current_file_number], COLOR_ACTIVE_ITEM,
              COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
           }
           else
           {
-            print_string(file_list[current_file_number], COLOR_INACTIVE_ITEM,
+            print_string((char*)file_list[current_file_number], COLOR_INACTIVE_ITEM,
              COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
           }
         }
@@ -263,12 +264,12 @@ s32 load_file(u8 **wildcards, u8 *result)
           if((current_dir_number == current_dir_selection) &&
            (current_column == 1))
           {
-            print_string(dir_list[current_dir_number], COLOR_ACTIVE_ITEM,
+            print_string((char*)dir_list[current_dir_number], COLOR_ACTIVE_ITEM,
              COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
           }
           else
           {
-            print_string(dir_list[current_dir_number], COLOR_INACTIVE_ITEM,
+            print_string((char*)dir_list[current_dir_number], COLOR_INACTIVE_ITEM,
              COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
           }
         }
@@ -372,7 +373,7 @@ s32 load_file(u8 **wildcards, u8 *result)
 #ifndef _arch_dreamcast
             chdir(dir_list[current_dir_selection]);
 #else
-			fs_chdir(dir_list[current_dir_selection]);
+			fs_chdir((char*)dir_list[current_dir_selection]);
 #endif
           }
           else
@@ -381,7 +382,7 @@ s32 load_file(u8 **wildcards, u8 *result)
             {
               repeat = 0;
               return_value = 0;
-              strcpy(result, file_list[current_file_selection]);
+              strcpy((char*)result, (char*)file_list[current_file_selection]);
             }
           }
           break;
@@ -402,6 +403,9 @@ s32 load_file(u8 **wildcards, u8 *result)
         case CURSOR_EXIT:
           return_value = -1;
           repeat = 0;
+          break;
+
+        default:
           break;
       }
     }
@@ -609,7 +613,7 @@ s32 load_game_config_file()
   u8 game_config_filename[512];
   u32 file_loaded = 0;
   u32 i;
-  change_ext(gamepak_filename, game_config_filename, ".cfg");
+  change_ext(gamepak_filename, game_config_filename, (u8*)".cfg");
 
   file_open(game_config_file, game_config_filename, read);
 
@@ -1438,6 +1442,9 @@ u32 menu(u16 *original_screen)
 
         if(current_option->option_type & SUBMENU_OPTION)
           choose_menu(current_option->sub_menu);
+        break;
+
+      default:
         break;
     }
   }

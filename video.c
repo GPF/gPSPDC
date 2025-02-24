@@ -1510,8 +1510,8 @@ bitmap_layer_render_struct bitmap_mode_renderers[3] =
   + (tile_size_##color_depth * ((obj_width - 8) / 8))                         \
 
 
-// Adjust the obj's starting point if it goes too far off the left edge of    \
-// the screen.                                                                \
+/* Adjust the obj's starting point if it goes too far off the left edge of    
+ the screen.      */                                                          
 
 #define obj_tile_right_offset_noflip(color_depth)                             \
   tile_ptr += (partial_tile_offset / 8) * tile_size_##color_depth             \
@@ -1771,7 +1771,7 @@ bitmap_layer_render_struct bitmap_mode_renderers[3] =
 
 #define obj_render_affine(combine_op, color_depth, alpha_op, map_space)       \
 {                                                                             \
-  s16 *params = oam_ram + (((obj_attribute_1 >> 9) & 0x1F) * 16);             \
+  s16 *params = (s16*)oam_ram + (((obj_attribute_1 >> 9) & 0x1F) * 16);             \
   s32 dx = params[3];                                                         \
   s32 dmx = params[7];                                                        \
   s32 dy = params[11];                                                        \
@@ -2176,6 +2176,7 @@ u32 order_layers(u32 layer_flags)
       layer_count++;
     }
   }
+  return layer_count;
 }
 
 #define fill_line(_start, _end)                                               \

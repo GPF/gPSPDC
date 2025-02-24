@@ -293,6 +293,8 @@ void function_cc write_eeprom(u32 address, u32 value)
           case 0x03:
             eeprom_mode = EEPROM_ADDRESS_MODE;
             break;
+          default:
+            break;
         }
         address16(eeprom_buffer, 0) = 0;
       }
