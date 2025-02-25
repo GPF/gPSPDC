@@ -176,11 +176,11 @@ printf("init_gamepak_buffer...\n");
   init_gamepak_buffer();
 
   // Copy the directory path of the executable into main_path
-// #ifndef _arch_dreamcast
+#ifndef _arch_dreamcast
+  getcwd(main_path);
+#else
   getcwd(main_path,512);
-// #else
-	// strcpy((main_path,"/cd/gbaDC/");
-// #endif
+#endif
 printf("load_config_file...\n");
   load_config_file();
 

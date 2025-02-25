@@ -95,7 +95,7 @@ s32 load_file(u8 **wildcards, u8 *result)
   u32 repeat;
   u32 i;
   gui_action_type gui_action;
-  fs_chdir("/cd/gbaDC/");
+
   while(return_value == 1)
   {
     current_file_selection = 0;
@@ -117,11 +117,10 @@ s32 load_file(u8 **wildcards, u8 *result)
     // chosen_file = 0;
     // chosen_dir = 0;
 
-// #ifndef _arch_dreamcast
+#ifdef _arch_dreamcast
+  fs_chdir("/cd/gbaDC/");
+#endif
     getcwd(current_dir_name, MAX_PATH);
-// #else
-// 	strcpy(current_dir_name,"/cd/gDC/");
-// #endif
 
     current_dir = opendir(current_dir_name);
 

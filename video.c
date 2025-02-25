@@ -21,7 +21,7 @@
 #include "font.h"
 #include "video.h"
 #ifdef _arch_dreamcast
-//#include <kos.h>
+#include <kos.h>
 #include <SDL_dreamcast.h>
 #endif
 
@@ -3615,22 +3615,70 @@ u16 *copy_screen()
   return copy;
 }
 
-void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y)
-{
-  u32 pitch = get_screen_pitch();
-  u16 *dest_ptr = get_screen_pixels() + dest_x + (dest_y * pitch);
-  u16 *src_ptr = src;
-  u32 line_skip = pitch - w;
-  u32 x, y;
+// void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y)
+// {
+//   u32 pitch = get_screen_pitch();
+//   u16 *dest_ptr = get_screen_pixels() + dest_x + (dest_y * pitch);
+//   u16 *src_ptr = src;
+//   u32 line_skip = pitch - w;
+//   u32 x, y;
 
-  for(y = 0; y < h; y++)
-  {
-    for(x = 0; x < w; x++, src_ptr++, dest_ptr++)
-    {
-      *dest_ptr = *src_ptr;
-    }
-    dest_ptr += line_skip;
+//   for(y = 0; y < h; y++)
+//   {
+//     for(x = 0; x < w; x++, src_ptr++, dest_ptr++)
+//     {
+//       *dest_ptr = *src_ptr;
+//     }
+//     dest_ptr += line_skip;
+//   }
+// }
+void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y) {
+  // Get screen pitch and base pointer
+  u32 pitch = get_screen_pitch(); // In 16-bit words
+  u16 *dest_base = get_screen_pixels();
+  u32 dest_offset = dest_x + (dest_y * pitch);
+  u32 *sq_dest = (u32 *)(((uintptr_t)dest_base + 0x10000000) + (dest_offset * 2)); // VRAM in P2 area, bytes
+
+  // SQ setup
+  u32 sq_blocks = w / 16; // Full 32-byte blocks per line
+  u32 remainder = w % 16; // Leftover pixels
+  volatile u32 *sq0 = (volatile u32 *)0xE0000000; // SQ0 base
+
+  for (u32 y = 0; y < h; y++) {
+      u16 *src_line = src + (y * w);
+      u32 *sq_line_dest = sq_dest + (y * pitch);
+
+      // Process full 32-byte blocks with SQ
+      for (u32 block = 0; block < sq_blocks; block++) {
+          // Pack 16 pixels into SQ0
+          sq0[0] = (src_line[1] << 16) | src_line[0];
+          sq0[1] = (src_line[3] << 16) | src_line[2];
+          sq0[2] = (src_line[5] << 16) | src_line[4];
+          sq0[3] = (src_line[7] << 16) | src_line[6];
+          sq0[4] = (src_line[9] << 16) | src_line[8];
+          sq0[5] = (src_line[11] << 16) | src_line[10];
+          sq0[6] = (src_line[13] << 16) | src_line[12];
+          sq0[7] = (src_line[15] << 16) | src_line[14];
+
+          // Write SQ0 to VRAM
+          asm volatile("pref @%0" : : "r"(sq_line_dest) : "memory");
+          *sq_line_dest = sq0[0]; // Trigger SQ write
+
+          src_line += 16;
+          sq_line_dest += 8; // 32 bytes = 8 words
+      }
+
+      // Handle remaining pixels
+      if (remainder) {
+          u16 *rem_dest = (u16 *)sq_line_dest;
+          for (u32 x = 0; x < remainder; x++) {
+              *rem_dest++ = *src_line++;
+          }
+      }
   }
+
+  // Ensure SQ writes complete
+  asm volatile("nop; nop; nop; nop;");
 }
 
 void print_string_ext(const char *str, u16 fg_color, u16 bg_color,
