@@ -3566,10 +3566,10 @@ void video_resolution_small()
     current_scale = screen_scale;
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
     screen = SDL_SetVideoMode(256 * video_scale,
-     256 * video_scale, 16, SDL_HWSURFACE);
-     SDL_DC_SetWindow(small_resolution_width,small_resolution_height);      
+     256 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
     resolution_width = small_resolution_width;
     resolution_height = small_resolution_height;
+    SDL_DC_SetWindow(resolution_width,resolution_height);   
   }
 }
 
