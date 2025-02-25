@@ -3552,7 +3552,7 @@ void video_resolution_large()
   {
     current_scale = unscaled;
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
-    screen = SDL_SetVideoMode(512, 512, 16, SDL_HWSURFACE);
+    screen = SDL_SetVideoMode(512, 512, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
     resolution_width = 480;
     resolution_height = 272;
     SDL_DC_SetWindow(resolution_width,resolution_height);
