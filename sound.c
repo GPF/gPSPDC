@@ -726,7 +726,7 @@ void init_sound()
 #ifdef PSP_BUILD
   audio_buffer_size = (audio_buffer_size_number * 1024) + 2048;
 #else
-  audio_buffer_size = 4096;
+  audio_buffer_size = 2048;
 #endif
 
   SDL_AudioSpec desired_spec =
