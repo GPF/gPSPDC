@@ -41,10 +41,10 @@ u32 memory_writes_u8;
 u32 memory_writes_u16;
 u32 memory_writes_u32;
 
-u32 idle_loop_target_pc;
-u32 iwram_stack_optimize;
-u32 translation_gate_targets;
-u32 translation_gate_target_pc[MAX_TRANSLATION_GATES];
+extern u32 idle_loop_target_pc;
+extern u32 iwram_stack_optimize;
+extern u32 translation_gate_targets;
+extern u32 translation_gate_target_pc[MAX_TRANSLATION_GATES];
 
 const u8 bit_count[256] =
 {
@@ -3847,7 +3847,6 @@ char *reg_names[16] =
 
 void print_thumb_registers()
 {
-#ifndef _arch_dreamcast
   u32 i;
 
   for(i = 0; i < 8; i++)
@@ -3859,12 +3858,10 @@ void print_thumb_registers()
   {
     printf("%s: %08x\t", reg_names[i], reg[i]);
   }
-#endif
 }
 
 void print_arm_registers()
 {
-#ifndef _arch_dreamcast
   u32 i, i2, i3;
 
   for(i = 0, i3 = 0; i < 4; i++)
@@ -3875,36 +3872,28 @@ void print_arm_registers()
     }
     printf("\n");
   }
-#endif
 }
 
 void print_thumb_instruction()
 {
-#ifndef _arch_dreamcast
   printf("instruction at PC: %04x\n", read_memory16(reg[REG_PC]));
-#endif
 }
 
 void print_arm_instruction()
 {
-#ifndef _arch_dreamcast
   printf("instruction at PC: %08x\n", read_memory32(reg[REG_PC]));
-#endif
 }
 
 void print_flags()
 {
-#ifndef _arch_dreamcast
   u32 cpsr = reg[REG_CPSR];
   printf("\n n:\t%d\tz:\t%d\tc:\t%d\tv:\t%d\t\ncpsr:\t%x\n\n",
    (cpsr >> 31) & 0x01, (cpsr >> 30) & 0x01, (cpsr >> 29) & 0x01,
    (cpsr >> 28) & 0x01, cpsr);
-#endif
 }
 
 void print_stack()
 {
-#ifndef _arch_dreamcast
   u32 i, i2, i3;
 
   printf("stack: ");
@@ -3919,21 +3908,16 @@ void print_stack()
       printf("\n       ");
   }
   printf("\n");
-#endif
 }
 
 void print_arm_debug(int cycles)
 {
-#ifndef _arch_dreamcast
   print_arm_instruction();
-#endif
 }
 
 void print_thumb_debug(int cycles)
 {
-#ifndef _arch_dreamcast
   print_thumb_instruction();
-#endif
 }
 
 u32 instruction_count = 0;
@@ -3945,7 +3929,6 @@ u32 last_instruction = 0;
 
 u32 function_cc step_debug(u32 pc, u32 cycles)
 {
-#ifndef _arch_dreamcast
   u32 debug = 0;
   u32 thumb = 0;
 
@@ -4088,9 +4071,9 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
       }
 
       #else
-
+#ifndef _arch_dreamcast
       key = getch();
-
+#endif
       #endif
     }
 
@@ -4171,7 +4154,6 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
     reg[REG_PC] = pc + 2;
   else
     reg[REG_PC] = pc + 4;
-#endif
   return 0;
 }
 

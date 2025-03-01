@@ -2213,6 +2213,7 @@ u32 load_gamepak(char *name)
     load_game_config_file();
 
     change_ext(gamepak_filename, cheats_filename, ".cht");
+    printf("cheats_filename: %s\n", cheats_filename);
     add_cheats(cheats_filename);
 
     return 0;
@@ -3147,11 +3148,10 @@ void load_state(char *savestate_filename)
 
     savestate_block(read);
     file_close(savestate_file);
-#ifndef _arch_dreamcast
+
     flush_translation_cache_ram();
     flush_translation_cache_rom();
     flush_translation_cache_bios();
-#endif
 
     oam_update = 1;
     gbc_sound_update = 1;

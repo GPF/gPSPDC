@@ -67,6 +67,8 @@ typedef struct
 
 #include "psp/mips_emit.h"
 
+#elif _arch_dreamcast 
+#include "sh4_emit.h"
 #else
 
 #include "x86/x86_emit.h"
@@ -1965,7 +1967,7 @@ extern u8 bit_count[256];
                                                                               \
     case 0x46:                                                                \
       /* MOV rd, rs */                                                        \
-      thumb_data_proc_mov_hi();                                               \
+      thumb_data_proc_hi(mov);                                                \
       break;                                                                  \
                                                                               \
     case 0x47:                                                                \
@@ -2254,17 +2256,18 @@ extern u8 bit_count[256];
       break;                                                                  \
                                                                               \
     case 0xB0 ... 0xB3:                                                       \
-      if((opcode >> 7) & 0x01)                                                \
-      {                                                                       \
-        /* ADD sp, -imm */                                                    \
-        thumb_adjust_sp(-(imm * 4));                                          \
-      }                                                                       \
-      else                                                                    \
-      {                                                                       \
-        /* ADD sp, +imm */                                                    \
-        thumb_adjust_sp((imm * 4));                                           \
-      }                                                                       \
-      break;                                                                  \
+    thumb_decode_add_sp();                                                  \
+    if((opcode >> 7) & 0x01)                                                \
+    {                                                                       \
+      /* ADD sp, -imm */                                                    \
+      thumb_adjust_sp(-(imm * 4));                                          \
+    }                                                                       \
+    else                                                                    \
+    {                                                                       \
+      /* ADD sp, +imm */                                                    \
+      thumb_adjust_sp((imm * 4));                                           \
+    }                                                                       \
+    break;                                                                  \
                                                                               \
     case 0xB4:                                                                \
       /* PUSH rlist */                                                        \
@@ -2652,8 +2655,6 @@ u32 bios_block_tag_top = 0x0101;
 #define rom_translation_region  TRANSLATION_REGION_ROM
 #define bios_translation_region TRANSLATION_REGION_BIOS
 
-#ifndef _arch_dreamcast
-
 #define block_lookup_translate_arm(mem_type, smc_enable)                      \
   translation_result = translate_block_arm(pc, mem_type##_translation_region, \
    smc_enable)                                                                \
@@ -2674,16 +2675,17 @@ u32 bios_block_tag_top = 0x0101;
      mem_type##_translation_region, smc_enable);                              \
   }                                                                           \
 
-#endif
 // 0x0101 is the smallest tag that can be used. 0xFFFF is marked
 // in the middle of blocks and used for write guarding, it doesn't
 // indicate a valid block either (it's okay to compile a new block
 // that overlaps the earlier one, although this should be relatively
 // uncommon)
 
-#define fill_tag_arm(mem_type)                                                \
-  location[0] = mem_type##_block_tag_top;                                     \
-  location[1] = 0xFFFF                                                        \
+#define fill_tag_arm(mem_type) \
+  do { \
+    location[0] = mem_type##_block_tag_top; \
+    location[1] = 0xFFFF; \
+  } while (0)
 
 #define fill_tag_thumb(mem_type)                                              \
   *location = mem_type##_block_tag_top                                        \
@@ -2839,11 +2841,10 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
   return block_address;                                                       \
 }                                                                             \
 
-#ifndef _arch_dreamcast
 block_lookup_address_builder(arm);
 block_lookup_address_builder(thumb);
 block_lookup_address_builder(dual);
-#endif
+
 // Potential exit point: If the rd field is pc for instructions is 0x0F,
 // the instruction is b/bl/bx, or the instruction is ldm with PC in the
 // register list.
@@ -2932,13 +2933,9 @@ block_lookup_address_builder(dual);
       block_data[block_data_position].condition |= 0x20;                      \
     break;                                                                    \
   }
-                                                                           \
-#ifndef _arch_dreamcast
-
+                                                                              \
 #define arm_link_block()                                                      \
   translation_target = block_lookup_address_arm(branch_target)                \
-
-#endif
 
 #define arm_instruction_width 4
 
@@ -3408,6 +3405,9 @@ void flush_translation_cache_ram()
 #ifdef PSP_BUILD
   invalidate_icache_region(ram_translation_cache,
    (ram_translation_ptr - ram_translation_cache) + 0x100);
+#elif defined(_arch_dreamcast)
+sh4_invalidate_icache_region((u32)ram_translation_cache,
+  (ram_translation_ptr - ram_translation_cache) + 0x100);
 #endif
   ram_translation_ptr = ram_translation_cache;
   ram_block_tag_top = 0x0101;
@@ -3462,8 +3462,10 @@ void flush_translation_cache_rom()
 #ifdef PSP_BUILD
   invalidate_icache_region(rom_translation_cache,
    rom_translation_ptr - rom_translation_cache + 0x100);
+#elif defined(_arch_dreamcast)
+sh4_invalidate_icache_region((u32)rom_translation_cache,
+rom_translation_ptr - rom_translation_cache + 0x100);
 #endif
-
   rom_translation_ptr = rom_translation_cache;
   memset(rom_branch_hash, 0, sizeof(rom_branch_hash));
 }
@@ -3473,8 +3475,10 @@ void flush_translation_cache_bios()
 #ifdef PSP_BUILD
   invalidate_icache_region(bios_translation_cache,
    bios_translation_ptr - bios_translation_cache + 0x100);
+#elif defined(_arch_dreamcast)
+   sh4_invalidate_icache_region((u32)bios_translation_cache,
+   bios_translation_ptr - bios_translation_cache + 0x100);
 #endif
-
   bios_block_tag_top = 0x0101;
   bios_translation_ptr = bios_translation_cache;
   memset(bios_rom + 0x4000, 0, 0x4000);

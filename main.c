@@ -147,11 +147,9 @@ void init_main()
 
   execute_cycles = 960;
   video_count = 960;
-#ifndef _arch_dreamcast
   flush_translation_cache_rom();
   flush_translation_cache_ram();
   flush_translation_cache_bios();
-#endif
 }
 
 int main(int argc, char *argv[])
@@ -394,8 +392,8 @@ u32 update_gba()
         dispstat &= ~0x01;
         frame_ticks++;
 
-#ifndef PSP_BUILD
-/*        printf("frame update (%x), %d instructions total, %d RAM flushes\n",
+#ifdef PSP_BUILD
+        printf("frame update (%x), %d instructions total, %d RAM flushes\n",
          reg[REG_PC], instruction_count - last_frame, flush_ram_count);
         last_frame = instruction_count;
         print_memory_stats(&memory_reads_u8, memory_region_access_read_u8,
@@ -415,7 +413,7 @@ u32 update_gba()
         print_memory_stats(&memory_writes_u32, memory_region_access_write_u32,
          "32bit write");
         printf("%d gbc audio updates\n", gbc_update_count);
-        printf("%d oam updates\n", oam_update_count); */
+        printf("%d oam updates\n", oam_update_count); 
         gbc_update_count = 0;
         oam_update_count = 0;
         flush_ram_count = 0;

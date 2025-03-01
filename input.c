@@ -541,9 +541,7 @@ u32 update_input()
 
         if(event.key.keysym.sym == SDLK_F1)
         {
-#ifndef _arch_dreamcast
           current_debug_state = STEP;
-#endif
         }
         else
 
@@ -570,9 +568,7 @@ u32 update_input()
 
         if(event.key.keysym.sym == SDLK_F3)
         {
-#ifndef _arch_dreamcast
           dump_translation_cache();
-#endif
         }
         else
 
