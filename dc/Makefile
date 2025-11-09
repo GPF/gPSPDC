@@ -2,16 +2,15 @@
 # DC porting by Troy Davis (GPF)
 
 TARGET = gdC.elf
-OBJS = sh4_stub.o ../main.o ../cpu_threaded.o ../cpu.o ../memory.o ../video.o ../input.o ../sound.o \
-       ../gui.o ../zip.o ../cheats.o romdisk.o
+OBJS =  sh4_stub.o  ../main.o ../cpu_threaded.o ../cpu.o ../memory.o ../video.o ../input.o ../sound.o \
+       ../gui.o ../zip.o ../cheats.o 
 
 KOS_ROMDISK_DIR = romdisk
 
 include $(KOS_BASE)/Makefile.rules
 
-KOS_CFLAGS += -D_arch_dreamcast=1  \
-    -I../dc \
-	-I.. \
+KOS_CFLAGS += -D_arch_dreamcast=1 -save-temps -fno-lto -DDEBUG_DYNAREC=1 -Wno-comment -Wno-unused-variable -Wno-switch -Wno-parentheses -Wno-int-conversion -Wno-implicit-function-declaration -ffixed-r12 -ffixed-r13 \
+    -I.. \
     -I$(KOS_BASE)/addons/include \
     -I$(KOS_BASE)/addons/include/SDL \
     -I$(KOS_BASE)/../kos-ports/include/zlib \
@@ -20,14 +19,14 @@ KOS_CFLAGS += -D_arch_dreamcast=1  \
 all: rm-elf $(TARGET)
 
 clean: rm-elf
-	-rm -f $(OBJS)
+	-rm -f $(OBJS) $(OBJS:.o=.i) $(OBJS:.o=.s) romdisk.*
 
 rm-elf:
 	-rm -f $(TARGET) romdisk.*
 
 $(TARGET): $(OBJS)
-	kos-cc -o $(TARGET) $(OBJS) -L$(KOS_BASE)/lib/dreamcast -L$(KOS_BASE)/addons/lib/dreamcast -L$(KOS_BASE)/../kos-ports/lib \
-	-lz -lm -lSDL $(KOS_LIBS)
+	kos-cc  -v -o $(TARGET) $(OBJS) -L$(KOS_BASE)/lib/dreamcast -L$(KOS_BASE)/addons/lib/dreamcast -L$(KOS_BASE)/../kos-ports/lib \
+	-lz -lm -lSDL $(KOS_LIBS) -Wl,-Map=prog.map
 
 run: $(TARGET)
 	$(KOS_LOADER) $(TARGET)
@@ -35,55 +34,3 @@ run: $(TARGET)
 dist: $(TARGET)
 	-rm -f $(OBJS) romdisk.img
 	$(KOS_STRIP) $(TARGET)
-
-# AR = ar
-# AR_FLAGS = cru
-# RANLIB = ranlib
-
-# INC=-I. 
-
-# OPT= -O3 -Wall  -ffast-math -funroll-loops -fstrict-aliasing -fexpensive-optimizations -falign-functions -fweb -frename-registers -fomit-frame-pointer -finline -finline-functions -fno-builtin -fno-common 
-
-
-# OPT2 = -O9 -fomit-frame-pointer -fno-ident -freorder-blocks -funsigned-char -funsigned-char -funroll-all-loops -frerun-loop-opt  -falign-loops -fstrict-aliasing
-
-# OPT3 = -O2 -Wall -ffast-math -fno-optimize-sibling-calls -fno-builtin -fno-strict-aliasing
-# OPT4 = -DFRAME_POINTER -g3 -O0 -fno-eliminate-unused-debug-types 
-# OPT5 = -Wno-implicit-function-declaration -Wno-implicit-int -Wno-return-mismatch
-# #KOS_CFLAGS += $(INC) $(OPT2)
-# KOS_CFLAGS = $(INC) -ml -m4-single-only -D_arch_dreamcast -D_arch_sub_pristine  \
-# $(OPT5) \
-# -I$(KOS_BASE)/../../sh-elf/sh-elf/include -I$(KOS_BASE)/include -I$(KOS_BASE)/kernel/arch/dreamcast/include -I$(KOS_BASE)/addons/include  -I$(KOS_BASE)/addons/include/SDL  -I$(KOS_BASE)/../kos-ports/include/zlib -I$(KOS_BASE)/../kos-ports/include/png
-
-
-# KOS_CPPFLAGS+= ${KOS_CFLAGS} 
-
-
-
-
-# TARGET = gdC.elf
-
-# .PHONY: all all-before all-after clean clean-custom
-
-# all: all-before $(TARGET) all-after
-
-# include dreamcast.mak
- 
-# OBJS      = ../main.o ../cpu.o ../memory.o ../video.o ../input.o ../sound.o \
-# 	     ../gui.o ../zip.o ../cheats.o #x86_stub.o ../cpu_threaded.o
-
-# include $(KOS_BASE)/Makefile.rules
-
-# clean:
-# 	-rm -f $(TARGET) $(OBJS) romdisk.*
-
-# rm-elf:
-# 	-rm -f $(TARGET) romdisk.*
-
-# $(TARGET): $(OBJS) $(PROBJS) romdisk.o
-# 	$(KOS_CC) $(KOS_CFLAGS) $(KOS_LDFLAGS) -o $(TARGET) $(KOS_START) \
-# 		$(OBJS)  $(PROBJS)  romdisk.o $(OBJEXTRA) -L$(KOS_BASE)/lib -lgcc -lz -lm -lSDL -lstdc++ $(KOS_LIBS)
-
-
-
-          

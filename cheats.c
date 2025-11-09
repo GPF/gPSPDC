@@ -70,7 +70,7 @@ void add_cheats(u8 *cheats_filename)
   cheat_variant_enum current_cheat_variant;
 
   num_cheats = 0;
-  #ifdef _arch_dreamcast
+#ifdef _arch_dreamcast
   // add /cd/gbaDC/ to the cheats_filename path
   u8 cheats_filename2[512];
   sprintf(cheats_filename2, "/cd/gbaDC/%s", cheats_filename);

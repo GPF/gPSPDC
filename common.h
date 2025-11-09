@@ -82,7 +82,7 @@
   #ifndef _arch_dreamcast
   #define function_cc __attribute__((regparm(2)))
   #else
-  #define function_cc
+  #define function_cc 
   #endif 
 
   typedef unsigned char u8;

@@ -23,7 +23,7 @@
 
 #include <stdio.h>
 #include "common.h"
-
+// #include "kos/dbglog.h"
 u32 memory_region_access_read_u8[16];
 u32 memory_region_access_read_s8[16];
 u32 memory_region_access_read_u16[16];
@@ -61,6 +61,7 @@ const u8 bit_count[256] =
   5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6,
   7, 7, 8
 };
+
 
 #define arm_decode_data_proc_reg()                                            \
   u32 rn = (opcode >> 16) & 0x0F;                                             \
@@ -493,18 +494,22 @@ u32 high_frequency_branch_targets = 0;
 #define BRANCH_ACTIVITY_THRESHOLD 50
 
 #define arm_update_pc()                                                       \
+  /*printf("arm_update_pc: reg[REG_PC] = pc = %08x\n", pc);  */                   \
   pc = reg[REG_PC]                                                            \
 
 #define arm_pc_offset(val)                                                    \
   pc += val;                                                                  \
+  /*printf("arm_pc_offset: reg[REG_PC] = pc = %08x\n", pc); */                    \
   reg[REG_PC] = pc                                                            \
 
 #define arm_pc_offset_update(val)                                             \
   pc += val;                                                                  \
+  /* printf("arm_pc_offset_update: reg[REG_PC] = pc = %08x\n", pc);    */          \
   reg[REG_PC] = pc                                                            \
 
 #define arm_pc_offset_update_direct(val)                                      \
   pc = val;                                                                   \
+  /*printf("arm_pc_offset_update_direct: reg[REG_PC] = pc = %08x\n", pc);  */     \
   reg[REG_PC] = pc                                                            \
 
 
@@ -966,6 +971,7 @@ const u32 psr_masks[16] =
 
 #define arm_block_memory_load_pc()                                            \
   load_aligned32(address, pc);                                                \
+  printf("arm_block_memory_load_pc: reg[REG_PC] = pc = %08x\n", pc);         \
   reg[REG_PC] = pc                                                            \
 
 #define arm_block_memory_store_pc()                                           \
@@ -1017,14 +1023,17 @@ const u32 psr_masks[16] =
 
 #define thumb_pc_offset(val)                                                  \
   pc += val;                                                                  \
+  /*printf("thumb_pc_offset: reg[REG_PC] = pc = %08x\n", pc);   */                \
   reg[REG_PC] = pc                                                            \
 
 #define thumb_pc_offset_update(val)                                           \
   pc += val;                                                                  \
+ /* printf("thumb_pc_offset_update: reg[REG_PC] = pc = %08x\n", pc);*/                     \
   reg[REG_PC] = pc                                                            \
 
 #define thumb_pc_offset_update_direct(val)                                    \
   pc = val;                                                                   \
+ /* printf("thumb_pc_offset_update_direct: reg[REG_PC] = pc = %08x\n", pc); */      \
   reg[REG_PC] = pc                                                            \
 
 #define thumb_decode_shift()                                                  \
@@ -1287,6 +1296,7 @@ const u32 psr_masks[16] =
   thumb_pc_offset(-2);                                                        \
   if(rd == 15)                                                                \
   {                                                                           \
+    /*printf("thumb_hireg_op: reg[REG_PC] = dest & ~0x01 = %08x\n", dest);*/      \
     reg[REG_PC] = dest & ~0x01;                                               \
     thumb_update_pc();                                                        \
   }                                                                           \
@@ -1328,6 +1338,7 @@ const u32 psr_masks[16] =
 #define thumb_block_address_postadjust_pop_pc()                               \
   load_memory_u32(address + offset, pc);                                      \
   pc &= ~0x01;                                                                \
+  /*printf("thumb_block_address_postadjust_pop_pc: reg[REG_PC] = pc = %08x\n", pc);*/ \
   reg[REG_PC] = pc;                                                           \
   address += offset + 4                                                       \
 
@@ -3840,6 +3851,7 @@ char *reg_names[16] =
       u32 lr = (pc + 2) | 0x01;                                               \
       pc = reg[REG_LR] + (offset * 2);                                        \
       reg[REG_LR] = lr;                                                       \
+      /*printf("reg[REG_PC] = pc: %08x\n", pc);       */                                        \
       reg[REG_PC] = pc;                                                       \
       break;                                                                  \
     }                                                                         \
@@ -3932,6 +3944,7 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
   u32 debug = 0;
   u32 thumb = 0;
 
+  /*printf("reg[REG_PC] = PC: %08x\n", pc);*/
   reg[REG_PC] = pc;
 
   if(reg[REG_CPSR] & 0x20)
@@ -4150,10 +4163,14 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
 
   last_instruction = reg[REG_PC];
 
-  if(thumb)
+  if(thumb){
+    //printf("thumb reg[REG_PC] = pc + 2; = %0x \n",reg[REG_PC]+2);
     reg[REG_PC] = pc + 2;
-  else
+  }
+  else{
+    /*printf("not thumb reg[REG_PC] = pc + 4; = %0x \n",reg[REG_PC]+4);*/
     reg[REG_PC] = pc + 4;
+  }
   return 0;
 }
 
@@ -4309,6 +4326,7 @@ void init_cpu()
   reg_mode[MODE_IRQ][5] = 0x3007FA0;
   reg_mode[MODE_FIQ][5] = 0x3007FA0;
   reg_mode[MODE_SUPERVISOR][5] = 0x3007FE0;
+  printf("CPU initialized  REG_PC = %08x\n", reg[REG_PC]);
 }
 
 #define cpu_savestate_builder(type)                                           \

@@ -151,7 +151,7 @@ void init_main()
   flush_translation_cache_ram();
   flush_translation_cache_bios();
 }
-
+void init_translation_cache(void);
 int main(int argc, char *argv[])
 {
   u32 i;
@@ -174,17 +174,17 @@ printf("init_gamepak_buffer...\n");
   init_gamepak_buffer();
 
   // Copy the directory path of the executable into main_path
-#ifndef _arch_dreamcast
-  getcwd(main_path);
-#else
   getcwd(main_path,512);
-#endif
 printf("load_config_file...\n");
   load_config_file();
 
   gamepak_filename[0] = 0;
 printf("load_bios...\n");
+#ifdef _arch_dreamcast
   if(load_bios("/cd/gba_bios.bin") == -1)
+#else
+if(load_bios("gba_bios.bin") == -1)
+#endif    
   {
 #ifdef PSP_BUILD
     gui_action_type gui_action = CURSOR_NONE;
@@ -212,6 +212,7 @@ printf("load_bios...\n");
 printf("Sorry, but gpSP requires a Gameboy Advance BIOS image to run\n");
 quit();
 #endif
+printf("BIOS loaded at %p, first 4 bytes: %08x\n", bios_rom, *(u32*)bios_rom);
   }
 
 #ifdef PSP_BUILD
@@ -270,13 +271,18 @@ printf("Loading files...\n");
   last_frame = 0;
 
   // We'll never actually return from here.
-
 #ifdef PSP_BUILD
   execute_arm_translate(execute_cycles);
-#else
-//  execute_arm_translate(execute_cycles);
+#elif defined(_arch_dreamcast)
+  dbglog(DBG_INFO, "Before execute_arm_translate: REG_PC=%08x, cycles=%u\n", reg[REG_PC], execute_cycles);
+  // init_translation_cache();
+  execute_arm_translate(execute_cycles);
+  dbglog(DBG_INFO, "After execute_arm_translate: REG_PC=%08x, cycles=%u\n", reg[REG_PC], execute_cycles);
   execute_arm(execute_cycles);
+#else
+execute_arm_translate(execute_cycles);
 #endif
+
   return 0;
 }
 
@@ -304,7 +310,7 @@ u32 update_gba()
 {
   irq_type irq_raised = IRQ_NONE;
   cpu_ticks += execute_cycles;
-
+  // printf("update_gba: cpu_ticks=%u, execute_cycles=%u\n", cpu_ticks, execute_cycles);
   if(gbc_sound_update)
   {
     gbc_update_count++;
@@ -392,7 +398,7 @@ u32 update_gba()
         dispstat &= ~0x01;
         frame_ticks++;
 
-#ifdef PSP_BUILD
+#ifdef not_arch_dreamcast
         printf("frame update (%x), %d instructions total, %d RAM flushes\n",
          reg[REG_PC], instruction_count - last_frame, flush_ram_count);
         last_frame = instruction_count;

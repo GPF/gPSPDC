@@ -20,6 +20,16 @@
 #ifndef X86_EMIT_H
 #define X86_EMIT_H
 
+#if DEBUG_DYNAREC
+#define SH4_LOG(level, fmt, ...) dbglog(level, fmt, ##__VA_ARGS__)
+#else
+#define SH4_LOG(level, fmt, ...) do { } while (0) // No-op in release
+#endif
+
+// Stub for hash chain logging - does nothing
+void log_hash_chain(u32 pc, u32 hash_target, u32 hash_value, int recursion_level){}
+
+
 u32 x86_update_gba(u32 pc);
 
 // Although these are defined as a function, don't call them as
@@ -27,6 +37,8 @@ u32 x86_update_gba(u32 pc);
 void x86_indirect_branch_arm(u32 address);
 void x86_indirect_branch_thumb(u32 address);
 void x86_indirect_branch_dual(u32 address);
+
+void function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask);
 
 void step_debug_x86(u32 pc);
 
@@ -415,6 +427,10 @@ typedef enum
 #define generate_update_pc(new_pc)                                            \
   x86_emit_mov_reg_imm(eax, new_pc)                                           \
 
+#define generate_update_pc_reg()                                              \
+  generate_update_pc(pc);                                                     \
+  generate_store_reg(a0, REG_PC)                                              \
+
 #define generate_cycle_update()                                               \
   x86_emit_sub_reg_imm(reg_cycles, cycle_count);                              \
   cycle_count = 0                                                             \
@@ -451,16 +467,11 @@ typedef enum
 // a0 holds the destination
 
 #define generate_indirect_branch_cycle_update(type)                           \
-  /*generate_cycle_update();                                                  \
-  x86_emit_j_offset(x86_condition_code_ns, 5);                                \
-  generate_function_call(x86_update_gba);*/                                     \
+  generate_cycle_update();                                                    \
   x86_emit_jmp_offset(x86_relative_offset(translation_ptr,                    \
    x86_indirect_branch_##type, 4))                                            \
 
 #define generate_indirect_branch_no_cycle_update(type)                        \
-  /*x86_emit_test_reg_reg(reg_cycles, reg_cycles);                              \
-  x86_emit_j_offset(x86_condition_code_ns, 5);                                \
-  generate_function_call(x86_update_gba);*/                                     \
   x86_emit_jmp_offset(x86_relative_offset(translation_ptr,                    \
    x86_indirect_branch_##type, 4))                                            \
 
@@ -580,9 +591,9 @@ u32 function_cc execute_lsl_flags_reg(u32 value, u32 shift)
   {
     if(shift > 31)
     {
-      if(shift == 32)
-        reg[REG_C_FLAG] = value & 0x01;
-      else
+      reg[REG_C_FLAG] = value & 0x01;
+
+      if(shift != 32)
         reg[REG_C_FLAG] = 0;
 
       value = 0;
@@ -602,9 +613,9 @@ u32 function_cc execute_lsr_flags_reg(u32 value, u32 shift)
   {
     if(shift > 31)
     {
-      if(shift == 32)
-        reg[REG_C_FLAG] = (value >> 31) & 0x01;
-      else
+      reg[REG_C_FLAG] = value >> 31;
+
+      if(shift != 32)
         reg[REG_C_FLAG] = 0;
 
       value = 0;
@@ -754,7 +765,7 @@ u32 function_cc execute_rrx(u32 value)
   if(shift != 0)                                                              \
   {                                                                           \
     generate_mov(a1, ireg);                                                   \
-    generate_shift_right_arithmetic(a1, shift - 1);                           \
+    generate_shift_right(a1, shift - 1);                                      \
     generate_and_imm(a1, 1);                                                  \
     generate_store_reg(a1, REG_C_FLAG);                                       \
     generate_rotate_right(ireg, shift);                                       \
@@ -886,7 +897,7 @@ u32 function_cc execute_rrx(u32 value)
 #define collapse_flags()                                                      \
   reg[REG_CPSR] = (reg[REG_N_FLAG] << 31) | (reg[REG_Z_FLAG] << 30) |         \
    (reg[REG_C_FLAG] << 29) | (reg[REG_V_FLAG] << 28) |                        \
-   reg[REG_CPSR] & 0xFF                                                       \
+   (reg[REG_CPSR] & 0xFF)                                                     \
 
 // It should be okay to still generate result flags, spsr will overwrite them.
 // This is pretty infrequent (returning from interrupt handlers, et al) so
@@ -923,13 +934,16 @@ u32 function_cc execute_rrx(u32 value)
 
 u32 function_cc execute_spsr_restore(u32 address)
 {
-  reg[REG_CPSR] = spsr[reg[CPU_MODE]];
-  extract_flags();
-  set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-  check_for_interrupts();
+  if(reg[CPU_MODE] != MODE_USER)
+  {
+    reg[REG_CPSR] = spsr[reg[CPU_MODE]];
+    extract_flags();
+    set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
+    check_for_interrupts();
 
-  if(reg[REG_CPSR] & 0x20)
-    address |= 0x01;
+    if(reg[REG_CPSR] & 0x20)
+      address |= 0x01;
+  }
 
   return address;
 }
@@ -1093,6 +1107,7 @@ typedef enum
       /* Reserved */                                                          \
       break;                                                                  \
   }                                                                           \
+  generate_cycle_update()                                                     \
 
 #define generate_conditional_branch_type(ireg_a, ireg_b)                      \
   switch(condition_check)                                                     \
@@ -1117,9 +1132,18 @@ typedef enum
 
 #define generate_branch()                                                     \
 {                                                                             \
-  generate_branch_cycle_update(                                               \
-   block_exits[block_exit_position].branch_source,                            \
-   block_exits[block_exit_position].branch_target);                           \
+  if(condition == 0x0E)                                                       \
+  {                                                                           \
+    generate_branch_cycle_update(                                             \
+     block_exits[block_exit_position].branch_source,                          \
+     block_exits[block_exit_position].branch_target);                         \
+  }                                                                           \
+  else                                                                        \
+  {                                                                           \
+    generate_branch_no_cycle_update(                                          \
+     block_exits[block_exit_position].branch_source,                          \
+     block_exits[block_exit_position].branch_target);                         \
+  }                                                                           \
   block_exit_position++;                                                      \
 }                                                                             \
 
@@ -1141,9 +1165,18 @@ typedef enum
   arm_decode_data_proc_reg();                                                 \
   generate_load_rm_sh(no_flags)                                               \
 
-#define arm_data_proc_imm()                                                   \
+  #define arm_data_proc_imm()                                                   \
   arm_decode_data_proc_imm();                                                 \
   generate_load_imm(a0, imm)                                                  \
+
+#define arm_data_proc(name, type, flags_op)                                   \
+{                                                                             \
+  arm_data_proc_##type();                                                     \
+  generate_load_reg_pc(a1, rn, 8);                                            \
+  generate_function_call(execute_##name);                                     \
+  generate_store_reg_pc_##flags_op(rv, rd);                                   \
+}                                                                             \
+
 
 #define arm_data_proc(name, type, flags_op)                                   \
 {                                                                             \
@@ -1173,7 +1206,7 @@ typedef enum
   generate_store_reg_pc_no_flags(a0, rd);                                     \
 }                                                                             \
 
-u32 function_cc execute_mul_flags(u32 dest)
+static void function_cc execute_mul_flags(u32 dest)
 {
   calculate_z_flag(dest);
   calculate_n_flag(dest);
@@ -1201,7 +1234,7 @@ u32 function_cc execute_mul_flags(u32 dest)
   arm_multiply_flags_##flags();                                               \
 }                                                                             \
 
-u32 function_cc execute_mul_long_flags(u32 dest_lo, u32 dest_hi)
+static void function_cc execute_mul_long_flags(u32 dest_lo, u32 dest_hi)
 {
   reg[REG_Z_FLAG] = (dest_lo == 0) & (dest_hi == 0);
   calculate_n_flag(dest_hi);
@@ -1247,17 +1280,29 @@ u32 function_cc execute_read_spsr()
   generate_function_call(execute_read_##psr_reg);                             \
   generate_store_reg(rv, rd)                                                  \
 
-void function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask)
+// store_mask and address are stored in the SAVE slots, since there's no real
+// register space to nicely pass them.
+
+u32 function_cc execute_store_cpsr_body(u32 _cpsr)
 {
-  reg[REG_CPSR] = (new_cpsr & store_mask) | (reg[REG_CPSR] & (~store_mask));
-  extract_flags();
-  if(store_mask & 0xFF)
+  reg[REG_CPSR] = _cpsr;
+  if(reg[REG_SAVE] & 0xFF)
   {
-    set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-    // TODO: check for interrupts, since this can change PC it has to be
-    // cased in ASM
+    set_cpu_mode(cpu_modes[_cpsr & 0x1F]);
+    if((io_registers[REG_IE] & io_registers[REG_IF]) &&
+     io_registers[REG_IME] && ((_cpsr & 0x80) == 0))
+    {
+      reg_mode[MODE_IRQ][6] = reg[REG_SAVE2] + 4;
+      spsr[MODE_IRQ] = _cpsr;
+      reg[REG_CPSR] = (_cpsr & 0xFFFFFF00) | 0xD2;
+      set_cpu_mode(MODE_IRQ);
+      return 0x00000018;
+    }
   }
+
+  return 0;
 }
+
 
 void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 {
@@ -1268,12 +1313,13 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 #define arm_psr_load_new_reg()                                                \
   generate_load_reg(a0, rm)                                                   \
 
-#define arm_psr_load_new_imm()                                                \
+  #define arm_psr_load_new_imm()                                                \
   generate_load_imm(a0, imm)                                                  \
 
 #define arm_psr_store(op_type, psr_reg)                                       \
   arm_psr_load_new_##op_type();                                               \
   generate_load_imm(a1, psr_masks[psr_field]);                                \
+  generate_load_pc(a2, (pc + 4));                                             \
   generate_function_call(execute_store_##psr_reg)                             \
 
 #define arm_psr(op_type, transfer_type, psr_reg)                              \
@@ -1289,6 +1335,13 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 #define read_memory(size, type, address, dest)                                \
 {                                                                             \
   u8 *map;                                                                    \
+                                                                              \
+  if(((address >> 24) == 0) && (reg[REG_PC] >= 0x4000))                       \
+  {                                                                           \
+    dest = *((type *)((u8 *)&bios_read_protect + (address & 0x03)));          \
+  }                                                                           \
+  else                                                                        \
+                                                                              \
   if(((address & aligned_address_mask##size) == 0) &&                         \
    (map = memory_map_read[address >> 15]))                                    \
   {                                                                           \
@@ -1303,6 +1356,13 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 #define read_memory_s16(address, dest)                                        \
 {                                                                             \
   u8 *map;                                                                    \
+                                                                              \
+  if(((address >> 24) == 0) && (reg[REG_PC] >= 0x4000))                       \
+  {                                                                           \
+    dest = *((s16 *)((u8 *)&bios_read_protect + (address & 0x03)));           \
+  }                                                                           \
+  else                                                                        \
+                                                                              \
   if(((address & aligned_address_mask16) == 0) &&                             \
    (map = memory_map_read[address >> 15]))                                    \
   {                                                                           \
@@ -1338,6 +1398,7 @@ u32 function_cc execute_load_s16(u32 address)
 void function_cc execute_store_##mem_type(u32 address, u32 source)            \
 {                                                                             \
   u8 *map;                                                                    \
+                                                                              \
   if(((address & aligned_address_mask##mem_size) == 0) &&                     \
    (map = memory_map_write[address >> 15]))                                   \
   {                                                                           \
@@ -1350,10 +1411,12 @@ void function_cc execute_store_##mem_type(u32 address, u32 source)            \
 }                                                                             \
 
 #define arm_access_memory_load(mem_type)                                      \
+  cycle_count += 2;                                                           \
   generate_function_call(execute_load_##mem_type);                            \
   generate_store_reg_pc_no_flags(rv, rd)                                      \
 
 #define arm_access_memory_store(mem_type)                                     \
+  cycle_count++;                                                              \
   generate_load_reg_pc(a1, rd, 12);                                           \
   generate_load_pc(a2, (pc + 4));                                             \
   generate_function_call(execute_store_##mem_type)                            \
@@ -1434,37 +1497,10 @@ void function_cc execute_store_##mem_type(u32 address, u32 source)            \
 #define word_bit_count(word)                                                  \
   (bit_count[word >> 8] + bit_count[word & 0xFF])                             \
 
-#define arm_block_address_preadjust_up_full()                                 \
-  generate_add_imm(s0, (word_bit_count(reg_list) * 4))                        \
-
-#define arm_block_address_preadjust_up()                                      \
-  generate_add_imm(s0, 4)                                                     \
-
-#define arm_block_address_preadjust_down_full()                               \
-  generate_sub_imm(s0, (word_bit_count(reg_list) * 4))                        \
-
-#define arm_block_address_preadjust_down()                                    \
-  generate_sub_imm(s0, ((word_bit_count(reg_list) * 4) - 4))                  \
-
-#define arm_block_address_preadjust_no()                                      \
-
-#define arm_block_address_postadjust_no()                                     \
-
-#define arm_block_address_postadjust_up()                                     \
-  generate_add_imm(a0, (word_bit_count(reg_list) * 4))                        \
-
-#define arm_block_address_postadjust_down()                                   \
-  generate_sub_imm(a0, (word_bit_count(reg_list) * 4))                        \
-
 #define sprint_no(access_type, pre_op, post_op, wb)                           \
 
 #define sprint_yes(access_type, pre_op, post_op, wb)                          \
-  /* printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb)*/   \
-
-#define arm_block_writeback_yes(access_type)                                  \
-  generate_store_reg(a0, rn)                                                  \
-
-#define arm_block_writeback_no(access_type)                                   \
+  printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb)       \
 
 u32 function_cc execute_aligned_load32(u32 address)
 {
@@ -1510,25 +1546,56 @@ void function_cc execute_aligned_store32(u32 address, u32 source)
     generate_indirect_branch_arm();                                           \
   }                                                                           \
 
-#define arm_block_memory(access_type, pre_op, post_op, wb, s_bit)             \
+#define arm_block_memory_offset_down_a()                                      \
+  generate_add_imm(s0, -((word_bit_count(reg_list) * 4) - 4))                 \
+
+#define arm_block_memory_offset_down_b()                                      \
+  generate_add_imm(s0, -(word_bit_count(reg_list) * 4))                       \
+
+#define arm_block_memory_offset_no()                                          \
+
+#define arm_block_memory_offset_up()                                          \
+  generate_add_imm(s0, 4)                                                     \
+
+#define arm_block_memory_writeback_down()                                     \
+  generate_load_reg(a0, rn)                                                   \
+  generate_add_imm(a0, -(word_bit_count(reg_list) * 4));                      \
+  generate_store_reg(a0, rn)                                                  \
+
+#define arm_block_memory_writeback_up()                                       \
+  generate_load_reg(a0, rn);                                                  \
+  generate_add_imm(a0, (word_bit_count(reg_list) * 4));                       \
+  generate_store_reg(a0, rn)                                                  \
+
+#define arm_block_memory_writeback_no()
+
+// Only emit writeback if the register is not in the list
+
+#define arm_block_memory_writeback_load(writeback_type)                       \
+  if(!((reg_list >> rn) & 0x01))                                              \
+  {                                                                           \
+    arm_block_memory_writeback_##writeback_type();                            \
+  }                                                                           \
+
+#define arm_block_memory_writeback_store(writeback_type)                      \
+  arm_block_memory_writeback_##writeback_type()                               \
+
+#define arm_block_memory(access_type, offset_type, writeback_type, s_bit)     \
 {                                                                             \
   arm_decode_block_trans();                                                   \
-  u32 i;                                                                      \
   u32 offset = 0;                                                             \
+  u32 i;                                                                      \
                                                                               \
   generate_load_reg(s0, rn);                                                  \
+  arm_block_memory_offset_##offset_type();                                    \
+  arm_block_memory_writeback_##access_type(writeback_type);                   \
   generate_and_imm(s0, ~0x03);                                                \
-  arm_block_address_preadjust_##pre_op();                                     \
-  generate_mov(a0, s0);                                                       \
-  arm_block_address_postadjust_##post_op();                                   \
-  arm_block_writeback_##wb(access_type);                                      \
-                                                                              \
-  sprint_##s_bit(access_type, pre_op, post_op, wb);                           \
                                                                               \
   for(i = 0; i < 16; i++)                                                     \
   {                                                                           \
     if((reg_list >> i) & 0x01)                                                \
     {                                                                         \
+      cycle_count++;                                                          \
       generate_add_reg_reg_imm(a0, s0, offset)                                \
       if(reg_list & ~((2 << i) - 1))                                          \
       {                                                                       \
@@ -1548,6 +1615,7 @@ void function_cc execute_aligned_store32(u32 address, u32 source)
 #define arm_swap(type)                                                        \
 {                                                                             \
   arm_decode_swap();                                                          \
+  cycle_count += 3;                                                           \
   generate_load_reg(a0, rn);                                                  \
   generate_function_call(execute_load_##type);                                \
   generate_mov(s0, rv);                                                       \
@@ -1652,13 +1720,20 @@ void function_cc execute_aligned_store32(u32 address, u32 source)
   generate_store_reg(a0, _rd);                                                \
 }                                                                             \
 
-#define thumb_adjust_sp(value)                                                \
-{                                                                             \
-  thumb_decode_add_sp();                                                      \
-  generate_load_reg(a0, 13);                                                  \
-  generate_add_imm(a0, (value));                                              \
-  generate_store_reg(a0, 13);                                                 \
-}                                                                             \
+#define thumb_adjust_sp_up()                                                  \
+  generate_add_imm(a0, imm * 4)                                               \
+
+#define thumb_adjust_sp_down()                                                \
+  generate_sub_imm(a0, imm * 4)                                               \
+
+
+  #define thumb_adjust_sp(value)                                                \
+  {                                                                             \
+    thumb_decode_add_sp();                                                      \
+    generate_load_reg(a0, 13);                                                  \
+    generate_add_imm(a0, (value));                                              \
+    generate_store_reg(a0, 13);                                                 \
+  }                                                                             \
 
 // Decode types: shift, alu_op
 // Operation types: lsl, lsr, asr, ror
@@ -1827,34 +1902,38 @@ u32 function_cc execute_ror_imm_op(u32 value, u32 shift)
 // Operation types: imm, mem_reg, mem_imm
 
 #define thumb_access_memory_load(mem_type, reg_rd)                            \
+  cycle_count += 2;                                                           \
   generate_function_call(execute_load_##mem_type);                            \
   generate_store_reg(rv, reg_rd)                                              \
 
 #define thumb_access_memory_store(mem_type, reg_rd)                           \
+  cycle_count++;                                                              \
   generate_load_reg(a1, reg_rd);                                              \
   generate_load_pc(a2, (pc + 2));                                             \
   generate_function_call(execute_store_##mem_type)                            \
 
-#define thumb_access_memory_generate_address_pc_relative(offset, reg_rb,      \
- reg_ro)                                                                      \
+#define thumb_access_memory_generate_address_pc_relative(offset, _rb, _ro)    \
   generate_load_pc(a0, (offset))                                              \
 
-#define thumb_access_memory_generate_address_reg_imm(offset, reg_rb, reg_ro)  \
-  generate_load_reg(a0, reg_rb);                                              \
+#define thumb_access_memory_generate_address_reg_imm_sp(offset, _rb, _ro)     \
+  generate_load_reg(a0, _rb);                                                 \
+  generate_add_imm(a0, (offset * 4))                                          \
+
+#define thumb_access_memory_generate_address_reg_imm(offset, _rb, _ro)        \
+  generate_load_reg(a0, _rb);                                                 \
   generate_add_imm(a0, (offset))                                              \
 
-#define thumb_access_memory_generate_address_reg_reg(offset, reg_rb, reg_ro)  \
-  generate_load_reg(a0, reg_rb);                                              \
-  generate_load_reg(a1, reg_ro);                                              \
+#define thumb_access_memory_generate_address_reg_reg(offset, _rb, _ro)        \
+  generate_load_reg(a0, _rb);                                                 \
+  generate_load_reg(a1, _ro);                                                 \
   generate_add(a0, a1)                                                        \
 
-#define thumb_access_memory(access_type, op_type, reg_rd, reg_rb, reg_ro,     \
+#define thumb_access_memory(access_type, op_type, _rd, _rb, _ro,              \
  address_type, offset, mem_type)                                              \
 {                                                                             \
   thumb_decode_##op_type();                                                   \
-  thumb_access_memory_generate_address_##address_type(offset, reg_rb,         \
-   reg_ro);                                                                   \
-  thumb_access_memory_##access_type(mem_type, reg_rd);                        \
+  thumb_access_memory_generate_address_##address_type(offset, _rb, _ro);      \
+  thumb_access_memory_##access_type(mem_type, _rd);                           \
 }                                                                             \
 
 #define thumb_block_address_preadjust_up()                                    \
@@ -1951,6 +2030,7 @@ u32 function_cc execute_ror_imm_op(u32 value, u32 shift)
   {                                                                           \
     if((reg_list >> i) & 0x01)                                                \
     {                                                                         \
+      cycle_count++;                                                          \
       generate_add_reg_reg_imm(a0, s0, offset)                                \
       if(reg_list & ~((2 << i) - 1))                                          \
       {                                                                       \
@@ -1970,7 +2050,7 @@ u32 function_cc execute_ror_imm_op(u32 value, u32 shift)
 
 #define thumb_conditional_branch(condition)                                   \
 {                                                                             \
-  condition_check_type condition_check;                                       \
+  condition_check_type condition_check = CONDITION_TRUE;                      \
   generate_cycle_update();                                                    \
   generate_condition_##condition(a0, a1);                                     \
   generate_conditional_branch_type(a0, a1);                                   \
@@ -2086,8 +2166,8 @@ data_proc_generate_logic_unary_function(mvn, ~rm);
 
 data_proc_generate_sub_function(sub, rn, rm);
 data_proc_generate_sub_function(rsb, rm, rn);
-data_proc_generate_sub_function(sbc, rn - rm, (reg[REG_C_FLAG] ^ 1));
-data_proc_generate_sub_function(rsc, rm + reg[REG_C_FLAG] - 1, rn);
+data_proc_generate_sub_function(sbc, rn, (rm + (reg[REG_C_FLAG] ^ 1)));
+data_proc_generate_sub_function(rsc, (rm + reg[REG_C_FLAG] - 1), rn);
 data_proc_generate_add_function(add, rn, rm);
 data_proc_generate_add_function(adc, rn, rm + reg[REG_C_FLAG]);
 
@@ -2096,7 +2176,7 @@ data_proc_generate_logic_test_function(teq, rn ^ rm);
 data_proc_generate_sub_test_function(cmp, rn, rm);
 data_proc_generate_add_test_function(cmn, rn, rm);
 
-u32 function_cc execute_swi(u32 pc)
+static void function_cc execute_swi(u32 pc)
 {
   reg_mode[MODE_SUPERVISOR][6] = pc;
   collapse_flags();
@@ -2106,8 +2186,11 @@ u32 function_cc execute_swi(u32 pc)
 }
 
 #define arm_conditional_block_header()                                        \
+{                                                                             \
+  condition_check_type condition_check = CONDITION_TRUE;                      \
   generate_condition(a0, a1);                                                 \
   generate_conditional_branch_type(a0, a1);                                   \
+}
 
 #define arm_b()                                                               \
   generate_branch()                                                           \
@@ -2216,11 +2299,11 @@ u8 swi_hle_handle[256] =
   0x0     // SWI 2A: SoundGetJumpList
 };
 
-void swi_hle_div()
+void function_cc swi_hle_div()
 {
   s32 result = (s32)reg[0] / (s32)reg[1];
-  reg[0] = result;
   reg[1] = (s32)reg[0] % (s32)reg[1];
+  reg[0] = result;
   reg[3] = (result ^ (result >> 31)) - (result >> 31);
 }
 

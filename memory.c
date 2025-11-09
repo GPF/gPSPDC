@@ -1859,6 +1859,10 @@ cpu_alert_type function_cc write_memory16(u32 address, u16 value)
 
 cpu_alert_type function_cc write_memory32(u32 address, u32 value)
 {
+  //printf("write_memory32 at %08x: %08x\n", address, value);
+  if (address == 0x04000000) {
+   // printf("DISPCNT write at 0x%08x: %08x\n", address, value);
+  }
   write_memory(32);
   return CPU_ALERT_NONE;
 }
@@ -2134,43 +2138,42 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
   return -1;
 }
 
-s32 load_gamepak_raw(char *name)
-{
-	char newname[100];
-	sprintf(newname,"/cd/gbaDC/%s",name);
-	fprintf(stderr,"loading %s\n",newname);
+s32 load_gamepak_raw(char *name) {
+  char newname[100];
+#ifdef _arch_dreamcast  
+  sprintf(newname, "/cd/gbaDC/%s", name);
+#else
+  sprintf(newname, "%s", name);
+#endif
+  fprintf(stderr, "loading %s\n", newname);
   file_open(gamepak_file, newname, read);
 
-  if(file_check_valid(gamepak_file))
-  {
-    u32 gamepak_size = file_length(name, gamepak_file);
+  if (file_check_valid(gamepak_file)) {
+      u32 gamepak_size = file_length(name, gamepak_file);
 
-    // First, close the last one if it was open, we won't
-    // be needing it anymore.
-    if(file_check_valid(gamepak_file_large))
-      file_close(gamepak_file_large);
+      if (file_check_valid(gamepak_file_large))
+          file_close(gamepak_file_large);
 
-    // If it's a big file size keep it don't close it, we'll
-    // probably want to load it later
-    if(gamepak_size <= gamepak_ram_buffer_size)
-    {
-      file_read(gamepak_file, gamepak_rom, gamepak_size);
-      file_close(gamepak_file);
-
+      if (gamepak_size <= gamepak_ram_buffer_size) {
+          file_read(gamepak_file, gamepak_rom, gamepak_size);
+          file_close(gamepak_file);
 #ifdef PSP_BUILD
-        gamepak_file_large = -1;
+          gamepak_file_large = -1;
 #else
-        gamepak_file_large = NULL;
+          gamepak_file_large = NULL;
 #endif
-    }
-    else
-    {
-      // Read in just enough for the header
-      file_read(gamepak_file, gamepak_rom, 0x100);
-      gamepak_file_large = gamepak_file;
-    }
+      } else {
+          file_read(gamepak_file, gamepak_rom, 0x100);
+          gamepak_file_large = gamepak_file;
+      }
 
-    return gamepak_size;
+      // Initialize memory_map_read for dynarec
+      u32 rom_base = (u32)gamepak_rom;
+      for (u32 page = 0x0800; page < 0x0E00; page++) { // GBA ROM region (0x08000000 - 0x0DFFFFFF)
+          memory_map_read[page] = (u8*)rom_base - (page << 15);
+      }
+
+      return gamepak_size;
   }
 
   return -1;
@@ -2225,19 +2228,17 @@ u32 load_gamepak(char *name)
 s32 load_bios(char *name)
 {
   file_open(bios_file, name, read);
-
   if(file_check_valid(bios_file))
   {
     file_read(bios_file, bios_rom, 0x4000);
-    // This is a hack to get Zelda working, because emulating
-    // the proper memory read behavior here is much too expensive.
+    printf("BIOS loaded from %s at %p, first 4 bytes: %08x\n", 
+           name, bios_rom, *(u32*)bios_rom);
     file_close(bios_file);
     return 0;
   }
-
+  printf("Failed to open BIOS file %s\n", name);
   return -1;
 }
-
 // DMA memory regions can be one of the following:
 // IWRAM - 32kb offset from the contiguous iwram region.
 // EWRAM - like segmented but with self modifying code check.

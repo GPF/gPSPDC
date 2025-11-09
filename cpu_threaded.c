@@ -24,6 +24,11 @@
 #include <stdio.h>
 #include "common.h"
 
+#ifdef _arch_dreamcast
+#include "kos/dbglog.h"
+#include <arch/cache.h>
+#endif
+
 u8 rom_translation_cache[ROM_TRANSLATION_CACHE_SIZE];
 u8 *rom_translation_ptr = rom_translation_cache;
 
@@ -68,7 +73,8 @@ typedef struct
 #include "psp/mips_emit.h"
 
 #elif _arch_dreamcast 
-#include "sh4_emit.h"
+#include "dc/sh4_emit.h"
+
 #else
 
 #include "x86/x86_emit.h"
@@ -212,7 +218,8 @@ extern u8 bit_count[256];
   check_pc_region(pc);                                                        \
   opcode = address32(pc_address_block, (pc & 0x7FFF));                        \
   condition = block_data[block_data_position].condition;                      \
-                                                                              \
+  printf("Translate arm insn start: pc=%08x, opcode=%08x, condition=%02x\n", pc, opcode, condition); \
+                                                                             \
   if((condition != last_condition) || (condition >= 0x20))                    \
   {                                                                           \
     condition_check_type condition_check;                                     \
@@ -220,6 +227,7 @@ extern u8 bit_count[256];
     if((last_condition & 0x0F) != 0x0E)                                       \
     {                                                                         \
       generate_branch_patch_conditional(backpatch_address, translation_ptr);  \
+      printf("generate_branch_patch_conditional: backpatch_address: %08x\n", backpatch_address);                 \
     }                                                                         \
                                                                               \
     last_condition = condition;                                               \
@@ -1657,7 +1665,7 @@ extern u8 bit_count[256];
   check_pc_region(pc);                                                        \
   last_opcode = opcode;                                                       \
   opcode = address16(pc_address_block, (pc & 0x7FFF));                        \
-                                                                              \
+  printf("Translate thumb insn start: REG_PC=%08x, pc=%08x, opcode=%08x\n", reg[REG_PC], pc, opcode); \
   switch((opcode >> 8) & 0xFF)                                                \
   {                                                                           \
     case 0x00 ... 0x07:                                                       \
@@ -2656,14 +2664,17 @@ u32 bios_block_tag_top = 0x0101;
 #define bios_translation_region TRANSLATION_REGION_BIOS
 
 #define block_lookup_translate_arm(mem_type, smc_enable)                      \
+  printf("entered block_lookup_translate_arm\n");                                         \
   translation_result = translate_block_arm(pc, mem_type##_translation_region, \
    smc_enable)                                                                \
 
 #define block_lookup_translate_thumb(mem_type, smc_enable)                    \
+  printf("block_lookup_translate_thumb\n");                        \
   translation_result = translate_block_thumb(pc,                              \
    mem_type##_translation_region, smc_enable)                                 \
 
 #define block_lookup_translate_dual(mem_type, smc_enable)                     \
+  printf("block_lookup_translate_dual %d\n", thumb);               \
   if(thumb)                                                                   \
   {                                                                           \
     translation_result = translate_block_thumb(pc,                            \
@@ -2698,6 +2709,7 @@ u32 bios_block_tag_top = 0x0101;
 
 #define block_lookup_translate(instruction_type, mem_type, smc_enable)        \
   block_tag = *location;                                                      \
+  printf("block_lookup_translate: block_tag=%d\n", block_tag);     \
   if((block_tag < 0x0101) || (block_tag == 0xFFFF))                           \
   {                                                                           \
     __label__ redo;                                                           \
@@ -2724,8 +2736,9 @@ u32 bios_block_tag_top = 0x0101;
       goto redo;                                                              \
     }                                                                         \
                                                                               \
-    if(translation_recursion_level == 0)                                      \
-      translate_invalidate_dcache();                                          \
+    if(translation_recursion_level == 0){                                      \
+      printf("translation_recursion_level == 0 ,Before flush: rom_translation_ptr=%p\n", rom_translation_ptr); \
+      translate_invalidate_dcache();}                                          \
   }                                                                           \
   else                                                                        \
   {                                                                           \
@@ -2741,6 +2754,8 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
   u16 *location;                                                              \
   u32 block_tag;                                                              \
   u8 *block_address;                                                          \
+    printf("start block_lookup_address_%s: pc=%08x, translation_recursion_level=%d\n", \
+           #type, pc, translation_recursion_level);             \
                                                                               \
   /* Starting at the beginning, we allow for one translation cache flush. */  \
   if(translation_recursion_level == 0)                                        \
@@ -2796,6 +2811,7 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
         *block_ptr_address = (u32 *)rom_translation_ptr;                      \
         rom_translation_ptr += 8;                                             \
         block_address = rom_translation_ptr + block_prologue_size;            \
+        log_hash_chain(pc, hash_target, rom_branch_hash[hash_target], translation_recursion_level);       \
         block_lookup_translate_##type(rom, 0);                                \
         translation_recursion_level--;                                        \
                                                                               \
@@ -2837,7 +2853,8 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
       block_address = (u8 *)(-1);                                             \
       break;                                                                  \
   }                                                                           \
-                                                                              \
+   printf("end block_lookup_address_%s: block_address=%p, translation_recursion_level=%u\n", \
+            #type, block_address, translation_recursion_level); \
   return block_address;                                                       \
 }                                                                             \
 
@@ -2935,7 +2952,9 @@ block_lookup_address_builder(dual);
   }
                                                                               \
 #define arm_link_block()                                                      \
-  translation_target = block_lookup_address_arm(branch_target)                \
+  SH4_LOG(DBG_INFO, "arm_link_block: Linking external branch to %08x\n", branch_target); \
+  translation_target = block_lookup_address_arm(branch_target);                \
+
 
 #define arm_instruction_width 4
 
@@ -3095,24 +3114,20 @@ block_exit_type block_exits[MAX_EXITS];
     type##_load_opcode();                                                     \
     type##_flag_status();                                                     \
                                                                               \
-    if(type##_exit_point)                                                     \
+    if((type##_exit_point) != 0)                                              \
     {                                                                         \
       /* Branch/branch with link */                                           \
-      if(type##_opcode_branch)                                                \
+      if((type##_opcode_branch) != 0)                                         \
       {                                                                       \
         __label__ no_direct_branch;                                           \
         type##_branch_target();                                               \
         block_exits[block_exit_position].branch_target = branch_target;       \
         block_exit_position++;                                                \
                                                                               \
-        /* Give the branch target macro somewhere to bail if it turns out to  \
-           be an indirect branch (ala malformed Thumb bl) */                  \
         no_direct_branch:;                                                    \
       }                                                                       \
                                                                               \
-      /* SWI branches to the BIOS, this will likely change when               \
-         some HLE BIOS is implemented. */                                     \
-      if(type##_opcode_swi)                                                   \
+      if((type##_opcode_swi) != 0)                                            \
       {                                                                       \
         block_exits[block_exit_position].branch_target = 0x00000008;          \
         block_exit_position++;                                                \
@@ -3120,13 +3135,8 @@ block_exit_type block_exits[MAX_EXITS];
                                                                               \
       type##_set_condition(condition | 0x10);                                 \
                                                                               \
-      /* Only unconditional branches can end the block. */                    \
-      if(type##_opcode_unconditional_branch)                                  \
+      if((type##_opcode_unconditional_branch) != 0)                           \
       {                                                                       \
-        /* Check to see if any prior block exits branch after here,           \
-           if so don't end the block. Starts from the top and works           \
-           down because the most recent branch is most likely to              \
-           join after the end (if/then form) */                               \
         for(i = block_exit_position - 2; i >= 0; i--)                         \
         {                                                                     \
           if(block_exits[i].branch_target == block_end_pc)                    \
@@ -3160,7 +3170,7 @@ block_exit_type block_exits[MAX_EXITS];
   } while(1);                                                                 \
                                                                               \
   block_end:;                                                                 \
-}                                                                             \
+}
 
 #define arm_fix_pc()                                                          \
   pc &= ~0x03                                                                 \
@@ -3234,7 +3244,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
        BIOS_TRANSLATION_CACHE_SIZE;                                           \
       break;                                                                  \
   }                                                                           \
-                                                                              \
+  printf("generate_block_prologue() at %p for PC=%08x\n", translation_ptr, pc);  \
   generate_block_prologue();                                                  \
                                                                               \
   /* This is a function because it's used a lot more than it might seem (all  \
@@ -3326,6 +3336,10 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     }                                                                         \
   }                                                                           \
                                                                               \
+  SH4_LOG(DBG_INFO, "Block ends at PC=%08x, block_exit_position =%d , placing exit at %p\n", block_end_pc, block_exit_position,translation_ptr); \
+  generate_exit_block();                                                      \
+  SH4_LOG(DBG_INFO, "After generate_exit_block() at %p\n", translation_ptr);                \
+                                                                              \
   for(i = 0; i < block_exit_position; i++)                                    \
   {                                                                           \
     branch_target = block_exits[i].branch_target;                             \
@@ -3336,18 +3350,19 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
       translation_target =                                                    \
        block_data[(branch_target - block_start_pc) /                          \
         type##_instruction_width].block_offset;                               \
-                                                                              \
+        SH4_LOG(DBG_INFO, "Internal branch to %08x, patching %p\n", branch_target, translation_target); \
       generate_branch_patch_unconditional(block_exits[i].branch_source,       \
        translation_target);                                                   \
     }                                                                         \
     else                                                                      \
     {                                                                         \
       /* External branch, save for later */                                   \
-      external_block_exits[external_block_exit_position].branch_target =      \
-       branch_target;                                                         \
-      external_block_exits[external_block_exit_position].branch_source =      \
-       block_exits[i].branch_source;                                          \
+      SH4_LOG(DBG_INFO, "External branch to %08x, saving %p\n", branch_target, translation_ptr); \
+      external_block_exits[external_block_exit_position].branch_target = branch_target;                                                         \
+      external_block_exits[external_block_exit_position].branch_source = block_exits[i].branch_source;                                          \
       external_block_exit_position++;                                         \
+      SH4_LOG(DBG_INFO, "external_block_exit_position = %d, branch_target = %08x, block_exits[i].branch_source = %p\n", external_block_exit_position, branch_target, block_exits[i].branch_source); \
+                                                                              \
     }                                                                         \
   }                                                                           \
                                                                               \
@@ -3378,15 +3393,18 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
       bios_translation_ptr = translation_ptr;                                 \
       break;                                                                  \
   }                                                                           \
-                                                                              \
+  SH4_LOG(DBG_INFO, "Loop to set External_block exits, external_block_exit_position = %d\n", external_block_exit_position); \
   for(i = 0; i < external_block_exit_position; i++)                           \
   {                                                                           \
+    SH4_LOG(DBG_INFO, "In loop external_block_exit_position = %d, branch_target = %08x, block_exits[i].branch_source = %p\n", external_block_exit_position, external_block_exits[i].branch_target, external_block_exits[i].branch_source); \
     branch_target = external_block_exits[i].branch_target;                    \
     type##_link_block();                                                      \
-    if(translation_target == NULL)                                            \
-      return -1;                                                              \
-    generate_branch_patch_unconditional(                                      \
-     external_block_exits[i].branch_source, translation_target);              \
+    SH4_LOG(DBG_INFO, "In loop External branch to %08x, link %p\n", branch_target, translation_target); \
+    if(translation_target == NULL){                                            \
+      SH4_LOG(DBG_INFO, "translation_target is NULL\n");                               \
+      return -1;}                                                              \
+    SH4_LOG(DBG_INFO, "In loop External branch to %08x, patching %p\n", branch_target, translation_target); \
+    generate_branch_patch_unconditional(external_block_exits[i].branch_source, translation_target);              \
   }                                                                           \
                                                                               \
   return 0;                                                                   \
@@ -3406,8 +3424,12 @@ void flush_translation_cache_ram()
   invalidate_icache_region(ram_translation_cache,
    (ram_translation_ptr - ram_translation_cache) + 0x100);
 #elif defined(_arch_dreamcast)
-sh4_invalidate_icache_region((u32)ram_translation_cache,
-  (ram_translation_ptr - ram_translation_cache) + 0x100);
+   uint32_t start = (uint32_t)ram_translation_cache;
+   uint32_t size = (uint32_t)(ram_translation_ptr - ram_translation_cache) + 0x100;
+   uint32_t end = (start + size + 31) & ~31; // Align to 32-byte boundary
+   dcache_flush_range(start, end - start);
+   icache_flush_range(start, end - start);
+   printf("Flushed ROM D-cache and I-cache from %08x to %08x (size %u)\n", start, end, end - start);
 #endif
   ram_translation_ptr = ram_translation_cache;
   ram_block_tag_top = 0x0101;
@@ -3463,8 +3485,10 @@ void flush_translation_cache_rom()
   invalidate_icache_region(rom_translation_cache,
    rom_translation_ptr - rom_translation_cache + 0x100);
 #elif defined(_arch_dreamcast)
-sh4_invalidate_icache_region((u32)rom_translation_cache,
-rom_translation_ptr - rom_translation_cache + 0x100);
+printf("Flushing cache: %p to %p, size=%u\n", 
+  rom_translation_cache, rom_translation_ptr, (u32)(rom_translation_ptr - rom_translation_cache));
+dcache_flush_range((u32)rom_translation_cache, (u32)(rom_translation_ptr - rom_translation_cache + 0x100));
+icache_flush_range((u32)rom_translation_cache,(u32)(rom_translation_ptr - rom_translation_cache + 0x100));
 #endif
   rom_translation_ptr = rom_translation_cache;
   memset(rom_branch_hash, 0, sizeof(rom_branch_hash));
@@ -3476,8 +3500,12 @@ void flush_translation_cache_bios()
   invalidate_icache_region(bios_translation_cache,
    bios_translation_ptr - bios_translation_cache + 0x100);
 #elif defined(_arch_dreamcast)
-   sh4_invalidate_icache_region((u32)bios_translation_cache,
-   bios_translation_ptr - bios_translation_cache + 0x100);
+uint32_t start = (uint32_t)bios_translation_cache;
+uint32_t size = (uint32_t)(bios_translation_ptr - bios_translation_cache) + 0x100;
+uint32_t end = (start + size + 31) & ~31; // Align to 32-byte boundary
+dcache_flush_range(start, end - start);
+icache_flush_range(start, end - start);
+printf("Flushed ROM D-cache and I-cache from %08x to %08x (size %u)\n", start, end, end - start);
 #endif
   bios_block_tag_top = 0x0101;
   bios_translation_ptr = bios_translation_cache;
