@@ -21,7 +21,7 @@
 #define MEMORY_H
 
 void init_gamepak_buffer();
-u32 load_file_zip();
+u32 load_file_zip(char *);
 
 typedef enum
 {

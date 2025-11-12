@@ -274,10 +274,10 @@ printf("Loading files...\n");
 #ifdef PSP_BUILD
   execute_arm_translate(execute_cycles);
 #elif defined(_arch_dreamcast)
-  dbglog(DBG_INFO, "Before execute_arm_translate: REG_PC=%08x, cycles=%u\n", reg[REG_PC], execute_cycles);
+  printf("Before execute_arm_translate: REG_PC=%08x, cycles=%u\n", reg[REG_PC], execute_cycles);
   // init_translation_cache();
   execute_arm_translate(execute_cycles);
-  dbglog(DBG_INFO, "After execute_arm_translate: REG_PC=%08x, cycles=%u\n", reg[REG_PC], execute_cycles);
+  printf("After execute_arm_translate: REG_PC=%08x, cycles=%u\n", reg[REG_PC], execute_cycles);
   execute_arm(execute_cycles);
 #else
 execute_arm_translate(execute_cycles);

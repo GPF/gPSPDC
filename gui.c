@@ -458,6 +458,11 @@ struct _menu_option_type
 
 typedef struct _menu_option_type menu_option_type;
 typedef struct _menu_type menu_type;
+static menu_type *current_menu;
+static menu_option_type *current_option;
+static u32 current_option_num;
+static u16 *menu_original_screen; 
+static menu_type main_menu; 
 
 #define make_menu(name, init_function, passive_function)                      \
   menu_type name##_menu =                                                     \
@@ -600,6 +605,7 @@ typedef struct _menu_type menu_type;
   action_selection_option(action_function, passive_function,                  \
    display_string, NULL, option_ptr, num_options, help_string,                \
    line_number, NUMBER_SELECTION_OPTION)                                      \
+
 
 
 #define GAMEPAD_MENU_WIDTH 15
@@ -879,6 +885,30 @@ void get_savestate_filename_noshot(u32 slot, u8 *name_buffer)
   }
 #endif
 
+static void choose_menu(menu_type *new_menu)
+{
+  if(new_menu == NULL)
+    new_menu = &main_menu;
+
+  clear_screen(COLOR_BG);
+  blit_to_screen(menu_original_screen, 240, 160, 230, 40);
+
+  current_menu = new_menu;
+  current_option = new_menu->options;
+  current_option_num = 0;
+  if(current_menu->init_function)
+    current_menu->init_function();
+}
+
+static void clear_help(void)
+{
+  u32 i;
+  for(i = 0; i < 6; i++)
+  {
+    print_string_pad(" ", COLOR_BG, COLOR_BG, 30, 210 + (i * 10), 70);
+  }
+}
+
 u32 menu(u16 *original_screen)
 {
   u32 clock_speed_number = (clock_speed / 33) - 1;
@@ -900,8 +930,7 @@ u32 menu(u16 *original_screen)
   menu_option_type *display_option;
   u32 current_option_num;
 
-  auto void choose_menu();
-  auto void clear_help();
+
 
   u8 *gamepad_help[] =
   {
@@ -1280,29 +1309,6 @@ u32 menu(u16 *original_screen)
   };
 
   make_menu(main, submenu_main, NULL);
-
-  void choose_menu(menu_type *new_menu)
-  {
-    if(new_menu == NULL)
-      new_menu = &main_menu;
-
-    clear_screen(COLOR_BG);
-    blit_to_screen(original_screen, 240, 160, 230, 40);
-
-    current_menu = new_menu;
-    current_option = new_menu->options;
-    current_option_num = 0;
-    if(current_menu->init_function)
-     current_menu->init_function();
-  }
-
-  void clear_help()
-  {
-    for(i = 0; i < 6; i++)
-    {
-      print_string_pad(" ", COLOR_BG, COLOR_BG, 30, 210 + (i * 10), 70);
-    }
-  }
 
   video_resolution_large();
 

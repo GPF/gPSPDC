@@ -12,7 +12,7 @@ include $(KOS_BASE)/Makefile.rules
 KOS_CFLAGS += -D_arch_dreamcast=1 -save-temps -fno-lto -DDEBUG_DYNAREC=1 -Wno-comment -Wno-unused-variable -Wno-switch -Wno-parentheses -Wno-int-conversion -Wno-implicit-function-declaration -ffixed-r12 -ffixed-r13 \
     -I.. \
     -I$(KOS_BASE)/addons/include \
-    -I$(KOS_BASE)/addons/include/SDL \
+    -I$(KOS_BASE)/addons/include/dreamcast/SDL \
     -I$(KOS_BASE)/../kos-ports/include/zlib \
     -I$(KOS_BASE)/../kos-ports/include/png
 
