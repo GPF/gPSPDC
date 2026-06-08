@@ -2041,7 +2041,6 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
 #elif _arch_dreamcast
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
-  printf("config_path: %s\n", config_path);
 #else
   sprintf(config_path, "%s\\%s", main_path, CONFIG_FILENAME);
 #endif
@@ -2058,7 +2057,6 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
         if(strcmp(current_variable, "game_name") ||
          strcmp(current_value, gamepak_title))
           continue;
-        printf("game_name: %s\n", current_value);
         if(!fgets(current_line, 256, config_file) ||
          (parse_config_line(current_line, current_variable,
            current_value) == -1) ||
@@ -2213,7 +2211,6 @@ u32 load_gamepak(char *name)
     load_game_config_file();
 
     change_ext(gamepak_filename, cheats_filename, ".cht");
-    printf("cheats_filename: %s\n", cheats_filename);
     add_cheats(cheats_filename);
 
     return 0;

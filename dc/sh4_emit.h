@@ -288,7 +288,10 @@ u32 function_cc execute_arm_translate(u32 cycles);
   SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc)
 
 #define generate_update_pc_reg() \
-  SH4_EMIT_FUNCTION_CALL(sh4_update_gba)
+  do { \
+    SH4_EMIT_LOAD_IMM(sh4_reg_r4, pc); \
+    SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \
+  } while(0)
 
 #define generate_branch_filler_true(ireg_dest, ireg_src, writeback_location) \
   do { \

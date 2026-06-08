@@ -512,7 +512,7 @@ void function_cc execute_mul_long_u64(u32 rm, u32 rs)
   u64 result = (u64)rm * (u64)rs;
   sh4_set_mul_result((u32)result, (u32)(result >> 32));
 }
-u32 function_cc execute_swi(u32 pc)
+void function_cc execute_swi(u32 pc)
 {
   reg_mode[MODE_SUPERVISOR][6] = pc;
   collapse_flags();
