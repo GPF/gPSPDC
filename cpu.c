@@ -930,8 +930,10 @@ const u32 psr_masks[16] =
   arm_block_memory_user_bank_##s_bit(reg_num)                                 \
 
 #define arm_block_memory_apply_writeback_load_no()                            \
+  do {} while(0)                                                              \
 
 #define arm_block_memory_apply_writeback_store_no()                           \
+  do {} while(0)                                                              \
 
 #define arm_block_memory_apply_writeback_load_down()                          \
   do                                                                          \
@@ -992,10 +994,11 @@ const u32 psr_masks[16] =
   {                                                                           \
     if((reg_list >> i) & 0x01)                                                \
     {                                                                         \
-      if(arm_block_memory_user_bank(i, s_bit))                                \
+      if(arm_block_memory_user_bank(i, s_bit)) {                              \
         access_type##_aligned32(address, reg_mode[MODE_USER][i - 8]);         \
-      else                                                                    \
+      } else {                                                                \
         access_type##_aligned32(address, reg[i]);                             \
+      }                                                                       \
       address += 4;                                                           \
     }                                                                         \
   }                                                                           \
@@ -4085,7 +4088,7 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
 
       #else
 #ifndef _arch_dreamcast
-      key = getch();
+      key = getchar();
 #endif
       #endif
     }
