@@ -19,7 +19,7 @@ Analysis of the highest-impact fixes for the **gPSPDC** Dreamcast port (`dreamca
 
 ## Phase 1 — Complete SH-4 dynarec (P1)
 
-**Status:** Not started
+**Status:** Complete (initial enablement)
 
 Dreamcast runs the **interpreter**, not the dynarec:
 
@@ -50,6 +50,16 @@ The SH-4 dynarec (`dc/sh4_emit.h`, `dc/sh4_stub.c`) is an initial scaffold (~554
 1. Finish `sh4_stub.c` (loads, CPSR, SWI, aligned access).
 2. Port conditional-branch and idle-loop macros from `psp/mips_emit.h`.
 3. Re-enable `execute_arm_translate()` once blocks execute correctly.
+
+**Implemented in this phase:**
+
+- `dc/sh4_helpers.c` — C helper functions for ALU, shifts, memory loads, CPSR/SPSR, SWI (ported from x86 emit)
+- `dc/sh4_instr.inc` — instruction translation macros (ported from x86 emit)
+- `dc/sh4_emit.h` — SH-4 bytecode emission, conditional branches, idle-loop elimination, cycle updates
+- `dc/sh4_stub.c` — SMC-aware stores, branch/update helpers, `execute_arm_translate()` entry with register setup
+- `main.c` — dynarec enabled for Dreamcast (`execute_arm_translate`)
+
+**Remaining risks / follow-up:** full hardware test on Dreamcast; some edge-case opcodes may need tuning; block memory writeback edge cases (Phase 2).
 
 ---
 
