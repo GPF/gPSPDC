@@ -921,12 +921,31 @@ u32 function_cc execute_rrx(u32 value)
     generate_indirect_branch_arm();                                           \
   }                                                                           \
 
+static u32 x86_take_pending_irq(u32 return_pc)
+{
+  if((io_registers[REG_IE] & io_registers[REG_IF]) &&
+   io_registers[REG_IME] && ((reg[REG_CPSR] & 0x80) == 0))
+  {
+    reg_mode[MODE_IRQ][6] = return_pc + 4;
+    spsr[MODE_IRQ] = reg[REG_CPSR];
+    reg[REG_CPSR] = 0xD2;
+    set_cpu_mode(MODE_IRQ);
+    return 0x00000018;
+  }
+
+  return 0;
+}
+
 u32 function_cc execute_spsr_restore(u32 address)
 {
+  u32 irq_pc;
+
   reg[REG_CPSR] = spsr[reg[CPU_MODE]];
   extract_flags();
   set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-  check_for_interrupts();
+  irq_pc = x86_take_pending_irq(address);
+  if(irq_pc != 0)
+    address = irq_pc;
 
   if(reg[REG_CPSR] & 0x20)
     address |= 0x01;
@@ -1247,17 +1266,29 @@ u32 function_cc execute_read_spsr()
   generate_function_call(execute_read_##psr_reg);                             \
   generate_store_reg(rv, rd)                                                  \
 
-void function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask)
+u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc)
 {
   reg[REG_CPSR] = (new_cpsr & store_mask) | (reg[REG_CPSR] & (~store_mask));
   extract_flags();
   if(store_mask & 0xFF)
   {
     set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-    // TODO: check for interrupts, since this can change PC it has to be
-    // cased in ASM
+    return x86_take_pending_irq(pc);
   }
+
+  return 0;
 }
+
+void function_cc x86_cheat_hook(void)
+{
+  process_cheats();
+}
+
+#define arm_process_cheats() \
+  generate_function_call(x86_cheat_hook)
+
+#define thumb_process_cheats() \
+  generate_function_call(x86_cheat_hook)
 
 void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 {
@@ -1271,10 +1302,28 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 #define arm_psr_load_new_imm()                                                \
   generate_load_imm(a0, imm)                                                  \
 
+#define arm_psr_store_cpsr_post()                                             \
+  do {                                                                        \
+    u8 *_skip_irq;                                                            \
+    x86_emit_test_reg_reg(reg_rv, reg_rv);                                   \
+    x86_emit_j_filler(x86_condition_code_z, _skip_irq);                       \
+    x86_emit_mov_reg_reg(eax, reg_rv);                                        \
+    generate_indirect_branch_arm();                                           \
+    generate_branch_patch_conditional(_skip_irq, translation_ptr);            \
+  } while(0)                                                                  \
+
+#define arm_psr_store_finish(cpsr)                                            \
+  generate_load_pc(a2, pc);                                                   \
+  generate_function_call(execute_store_cpsr);                                 \
+  arm_psr_store_cpsr_post()                                                   \
+
+#define arm_psr_store_finish(spsr)                                            \
+  generate_function_call(execute_store_spsr)                                  \
+
 #define arm_psr_store(op_type, psr_reg)                                       \
   arm_psr_load_new_##op_type();                                               \
   generate_load_imm(a1, psr_masks[psr_field]);                                \
-  generate_function_call(execute_store_##psr_reg)                             \
+  arm_psr_store_finish(psr_reg)                                               \
 
 #define arm_psr(op_type, transfer_type, psr_reg)                              \
 {                                                                             \

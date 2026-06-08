@@ -1,5 +1,6 @@
 #include <kos.h>
 #include "sh4_emit.h"
+#include "cheats.h"
 
 extern u32 reg[];
 extern u32 spsr[];
@@ -287,4 +288,9 @@ void sh4_step_debug(u32 pc)
 {
   collapse_flags();
   step_debug(pc, reg[REG_CYCLES]);
+}
+
+void sh4_cheat_hook(void)
+{
+  process_cheats();
 }

@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include "common.h"
+#include "cheats.h"
 
 u8 rom_translation_cache[ROM_TRANSLATION_CACHE_SIZE];
 u8 *rom_translation_ptr = rom_translation_cache;
@@ -3272,6 +3273,11 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     block_data[block_data_position].block_offset = translation_ptr;           \
     type##_base_cycles();                                                     \
     /*generate_step_debug();*/                                                \
+                                                                              \
+    if(pc == cheat_master_hook)                                               \
+    {                                                                         \
+      type##_process_cheats();                                                \
+    }                                                                         \
                                                                               \
     if(pc == force_pc_update_target)                                          \
     {                                                                         \
