@@ -547,22 +547,24 @@ u32 update_input()
 
         if(event.key.keysym.sym == SDLK_F2)
         {
+#ifdef GPSP_DEBUG
           FILE *fp = fopen("palette_ram.bin", "wb");
-          printf("writing palette RAM\n");
+          gpsp_debug_printf("writing palette RAM\n");
           fwrite(palette_ram, 1024, 1, fp);
           fclose(fp);
-          printf("writing palette VRAM\n");
+          gpsp_debug_printf("writing palette VRAM\n");
           fp = fopen("vram.bin", "wb");
           fwrite(vram, 1024 * 96, 1, fp);
           fclose(fp);
-          printf("writing palette OAM RAM\n");
+          gpsp_debug_printf("writing palette OAM RAM\n");
           fp = fopen("oam_ram.bin", "wb");
           fwrite(oam_ram, 1024, 1, fp);
           fclose(fp);
-          printf("writing palette I/O registers\n");
+          gpsp_debug_printf("writing palette I/O registers\n");
           fp = fopen("io_registers.bin", "wb");
           fwrite(io_registers, 1024, 1, fp);
           fclose(fp);
+#endif
         }
         else
 

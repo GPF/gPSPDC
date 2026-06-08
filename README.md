@@ -38,7 +38,7 @@ When building a CD image (`dc/dc.sh`), the expected layout is:
     game_config.txt     # Idle-loop and per-game settings
     *.gba / *.zip       # Your ROM files
     *.sav               # Save files (created at runtime)
-    *.ssN               # Savestates
+    *.svs               # Savestates (slot 0-9)
     *.cht               # Cheat files (optional)
     gpsp.cfg            # Global config (created at runtime)
 ```
@@ -111,7 +111,7 @@ Enable cheats from the in-game **Cheats/Misc** menu. Gameshark v1/v3 write codes
 
 ## Savestates
 
-Save and load from the menu or bound buttons. Savestates are stored as `<romname>.ss0` … `<romname>.ss9` in `/cd/gbaDC/`. They are not compatible with other emulators.
+Save and load from the menu or bound buttons. Savestates are stored as `<romname>.0.svs` … `<romname>.9.svs` in `/cd/gbaDC/`. They are not compatible with other emulators.
 
 ## Credits
 

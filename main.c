@@ -21,6 +21,8 @@
 #include "sound.h"
 #include "cpu.h"
 #include "video.h"
+#include "memory.h"
+#include "input.h"
 #ifdef PSP_BUILD
 
 //PSP_MODULE_INFO("gpSP", 0x1000, 0, 6);
@@ -152,6 +154,75 @@ void init_main()
   flush_translation_cache_bios();
 }
 
+#if defined(_arch_dreamcast)
+static void gpsp_fatal_error_screen(const char **lines, u32 line_count)
+{
+  u32 i;
+  gui_action_type gui_action;
+
+  for(i = 0; i < line_count; i++)
+    printf("%s\n", lines[i]);
+
+  init_video();
+  init_input();
+  video_resolution_large();
+  clear_screen(0x0000);
+  for(i = 0; i < line_count; i++)
+    print_string(lines[i], 0xFFFF, 0x0000, 10, 10 + (i * 10));
+  flip_screen();
+
+  gui_action = CURSOR_NONE;
+  while(gui_action == CURSOR_NONE)
+  {
+    gui_action = get_gui_input();
+    delay_us(15000);
+  }
+
+  SDL_Quit();
+  exit(1);
+}
+
+static void gpsp_missing_bios_error(void)
+{
+  static const char *lines[] =
+  {
+    "gPSPDC requires a GBA BIOS image.",
+    "Place gba_bios.bin at /cd/gba_bios.bin",
+    "Size: 16384 bytes",
+    "MD5: a860e8c0b6d573d191e4ec7db1b1e4f6",
+    "Press Start to exit."
+  };
+
+  gpsp_fatal_error_screen(lines, 5);
+}
+
+static void gpsp_no_memory_error(void)
+{
+  static const char *lines[] =
+  {
+    "gPSPDC could not allocate ROM buffer.",
+    "Not enough system RAM is available.",
+    "Press Start to exit."
+  };
+
+  gpsp_fatal_error_screen(lines, 3);
+}
+
+static void gpsp_gamepak_load_error(const char *filename)
+{
+  static const char *prefix = "Could not load game ROM:";
+  static const char *suffix = "Press Start to exit.";
+  char detail[512];
+  const char *lines[3];
+
+  sprintf(detail, "%s", filename);
+  lines[0] = prefix;
+  lines[1] = detail;
+  lines[2] = suffix;
+  gpsp_fatal_error_screen(lines, 3);
+}
+#endif
+
 int main(int argc, char *argv[])
 {
   u32 i;
@@ -172,6 +243,10 @@ int main(int argc, char *argv[])
 #endif
   gpsp_debug_printf("init_gamepak_buffer...\n");
   init_gamepak_buffer();
+#ifdef _arch_dreamcast
+  if(gamepak_rom == NULL)
+    gpsp_no_memory_error();
+#endif
 
   // Copy the directory path of the executable into main_path
 #ifndef _arch_dreamcast
@@ -208,9 +283,11 @@ int main(int argc, char *argv[])
     }
 
     quit();
+#elif defined(_arch_dreamcast)
+    gpsp_missing_bios_error();
 #else
-printf("Sorry, but gpSP requires a Gameboy Advance BIOS image to run\n");
-quit();
+    printf("Sorry, but gpSP requires a Gameboy Advance BIOS image to run\n");
+    exit(1);
 #endif
   }
 
@@ -232,8 +309,12 @@ quit();
   {
     if(load_gamepak(argv[1]) == -1)
     {
-      printf("Failed to load gamepak %s, exiting.\n", load_filename);
+#ifdef _arch_dreamcast
+      gpsp_gamepak_load_error(argv[1]);
+#else
+      printf("Failed to load gamepak %s, exiting.\n", argv[1]);
       exit(-1);
+#endif
     }
 
     set_gba_resolution(screen_scale);
@@ -254,9 +335,13 @@ quit();
     {
       if(load_gamepak(load_filename) == -1)
       {
+#ifdef _arch_dreamcast
+        gpsp_gamepak_load_error((char *)load_filename);
+#else
         printf("Failed to load gamepak %s, exiting.\n", load_filename);
         delay_us(5000000);
         exit(-1);
+#endif
       }
 
       set_gba_resolution(screen_scale);

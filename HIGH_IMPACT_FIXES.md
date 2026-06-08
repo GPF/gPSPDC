@@ -88,6 +88,20 @@ Unified gamepak swap paging in `memory.c`:
 
 ---
 
+## Phase 5 — User readiness audit (P5)
+
+**Status:** Complete
+
+- **On-screen fatal errors (Dreamcast)** — missing BIOS, ROM buffer allocation failure, and gamepak load errors now show a readable message on the display (with serial `printf` fallback) and wait for Start before exiting. BIOS screen includes `/cd/gba_bios.bin` path, size, and MD5.
+- **ROM load error fix** — command-line load path now reports `argv[1]` instead of an uninitialized `load_filename`.
+- **README** — savestate filenames corrected to `<romname>.0.svs` … `<romname>.9.svs` (matches `gui.c`).
+- **Debug keys** — host SDL F2 palette dump gated behind `GPSP_DEBUG` (silent in release builds).
+- **Host tests** — `tests/phase5_user_readiness_test.c` contract-checks fatal-error strings and README savestate docs.
+
+**Remaining risks:** real-hardware smoke test on Dreamcast; no automated on-target UI test.
+
+---
+
 ## Priority summary
 
 | Phase | Fix | Effort | Impact |
@@ -97,6 +111,7 @@ Unified gamepak swap paging in `memory.c`:
 | **2** | LDM/STM interpreter fixes | Medium | Compatibility for edge-case games ✓ |
 | **3** | ROM buffer / paging strategy | Medium | Large ROM support ✓ |
 | **4** | Release polish | Small | Cleaner release build ✓ |
+| **5** | User readiness audit | Small | On-screen errors, docs, debug gating ✓ |
 
 ```mermaid
 flowchart TD
@@ -106,6 +121,7 @@ flowchart TD
     E[Phase 2: Fix LDM/STM interpreter bugs] --> D
     F[Phase 3: Evaluate ROM buffer sizing] --> G[Phase 4: Release polish]
     D --> G
+    G --> H[Phase 5: User readiness audit]
 ```
 
 ---
