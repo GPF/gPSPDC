@@ -3274,7 +3274,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     type##_base_cycles();                                                     \
     /*generate_step_debug();*/                                                \
                                                                               \
-    if(pc == cheat_master_hook)                                               \
+    if(cheat_pc_is_hook(pc))                                                 \
     {                                                                         \
       type##_process_cheats();                                                \
     }                                                                         \

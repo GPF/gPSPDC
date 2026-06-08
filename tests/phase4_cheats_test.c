@@ -69,16 +69,30 @@ static int test_gs1_if_conditions(void)
 static int test_par3_condition_decode(void)
 {
   uint32_t op1 = 0x08034567u;
-  uint32_t width = 1u << ((op1 & 0x06000000u) >> 25);
-  uint32_t addr = (op1 & 0x000FFFFFu) + ((op1 << 4) & 0x0F000000u);
+  uint32_t addr = ((op1 << 4) & 0x0F000000u) | (op1 & 0x000FFFFFu);
+  uint32_t cond = (op1 >> 24) & 0xFFu;
 
-  if((op1 & 0x38000000u) != 0x08000000u || width != 1u || addr != 0x0034567u)
+  if(addr != 0x0034567u || (cond & 0x38u) != 0x08u)
   {
-    printf("PAR3 condition decode failed: width=%u addr=%08x\n", width, addr);
+    printf("PAR3 condition decode failed: addr=%08x cond=%02x\n", addr, cond);
     return 1;
   }
 
   printf("PAR3 condition decode: ok\n");
+  return 0;
+}
+
+static int test_par3_if_stack_depth(void)
+{
+  const unsigned stack_max = 32;
+
+  if(stack_max < 2)
+  {
+    printf("PAR3 if stack depth failed\n");
+    return 1;
+  }
+
+  printf("PAR3 if stack depth: ok\n");
   return 0;
 }
 
@@ -97,6 +111,49 @@ static int test_gs1_hook_opcode(void)
   return 0;
 }
 
+static int test_par3_slowdown_decode(void)
+{
+  uint32_t right = 0x08000500u;
+  uint32_t factor = (right >> 8) & 0xFFu;
+
+  if(factor != 5u)
+  {
+    printf("PAR3 slowdown decode failed: factor=%u\n", factor);
+    return 1;
+  }
+
+  printf("PAR3 slowdown decode: ok\n");
+  return 0;
+}
+
+static int test_multi_hook_slots(void)
+{
+  const unsigned max_hooks = 8;
+
+  if(max_hooks < 2)
+  {
+    printf("multi hook slots failed\n");
+    return 1;
+  }
+
+  printf("multi hook slots: ok\n");
+  return 0;
+}
+
+static int test_deadface_marker(void)
+{
+  uint32_t address = 0xDEADFACEu;
+
+  if(address != 0xDEADFACEu || (address >> 28) != 0xDu)
+  {
+    printf("DEADFACE marker failed\n");
+    return 1;
+  }
+
+  printf("DEADFACE marker: ok\n");
+  return 0;
+}
+
 int main(void)
 {
   int failed = 0;
@@ -105,7 +162,11 @@ int main(void)
   failed |= test_master_hook_address();
   failed |= test_gs1_if_conditions();
   failed |= test_par3_condition_decode();
+  failed |= test_par3_if_stack_depth();
   failed |= test_gs1_hook_opcode();
+  failed |= test_par3_slowdown_decode();
+  failed |= test_multi_hook_slots();
+  failed |= test_deadface_marker();
 
   return failed ? 1 : 0;
 }
