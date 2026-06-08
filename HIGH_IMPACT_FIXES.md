@@ -38,8 +38,9 @@ Dreamcast uses `execute_arm_translate()` via the SH-4 dynarec backend.
 - `sh4_update_gba` tail-jumps on IRQ/PC change; emitted code reloads `r13` from return value
 - `execute_store_*` takes instruction PC (third arg) instead of corrupting `REG_PC` with the address
 - Added `get_shift_imm` / `generate_shift_reg`; Thumb hi-reg PC branches move target into `r4`
-- `SH4_EMIT_CMP_REG` uses `cmp/str` (sets T flag); `swi_hle_div` remainder fix
-- Host test: `tests/phase1_helpers_test.c`
+- Audited SH-4 opcode emission for ALU ops, load/store displacement, shifts/rotates, `jsr`, `cmp/eq`, and unsigned immediate materialization
+- `SH4_EMIT_CMP_REG` uses `cmp/eq` (sets T flag); `swi_hle_div` remainder fix
+- Host tests: `tests/phase1_helpers_test.c`, `tests/sh4_emit_encoding_test.c`
 
 **Remaining risks:** hardware validation on real Dreamcast/KOS toolchain; dynarec edge cases may still need game-specific testing.
 
