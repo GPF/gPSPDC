@@ -2343,6 +2343,12 @@ u8 swi_hle_handle[256] =
   }                                                                           \
 }                                                                             \
 
+#define generate_update_pc_reg()                                              \
+  do {                                                                        \
+    generate_load_pc(reg_a0, pc);                                             \
+    generate_function_call(mips_update_gba);                                  \
+  } while(0)                                                                  \
+
 #define generate_translation_gate(type)                                       \
   generate_load_pc(reg_a0, pc);                                               \
   generate_indirect_branch_no_cycle_update(type)                              \

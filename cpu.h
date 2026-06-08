@@ -118,9 +118,15 @@ u32 function_cc execute_load_u16(u32 address);
 u32 function_cc execute_load_u32(u32 address);
 u32 function_cc execute_load_s8(u32 address);
 u32 function_cc execute_load_s16(u32 address);
+#if defined(_arch_dreamcast)
+void function_cc execute_store_u8(u32 address, u32 source, u32 pc);
+void function_cc execute_store_u16(u32 address, u32 source, u32 pc);
+void function_cc execute_store_u32(u32 address, u32 source, u32 pc);
+#else
 void function_cc execute_store_u8(u32 address, u32 source);
 void function_cc execute_store_u16(u32 address, u32 source);
 void function_cc execute_store_u32(u32 address, u32 source);
+#endif
 void function_cc execute_store_u8_no_smc(u32 address, u32 source);
 void function_cc execute_store_u16_no_smc(u32 address, u32 source);
 void function_cc execute_store_u32_no_smc(u32 address, u32 source);

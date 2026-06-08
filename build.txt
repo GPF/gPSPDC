@@ -1,11 +1,4 @@
-How to build gpSP for PSP:
+See README.md for build instructions.
 
-The makefile is in the psp directory, simply go there and type make.
-make kxploit will build for 1.5 firmware. Be sure to include
-game_config.txt and gpsp.cfg in the same directory as EBOOT.PBP, as
-well as gba_bios.bin (not included).
-
-Dependencies as of v0.6:
-
-  SDL
-  zlib
+Dreamcast: cd dc && make
+PSP (upstream): cd psp && make

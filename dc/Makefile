@@ -2,7 +2,7 @@
 # DC porting by Troy Davis (GPF)
 
 TARGET = gdC.elf
-OBJS = sh4_stub.o ../main.o ../cpu_threaded.o ../cpu.o ../memory.o ../video.o ../input.o ../sound.o \
+OBJS = sh4_stub.o sh4_helpers.o ../main.o ../cpu_threaded.o ../cpu.o ../memory.o ../video.o ../input.o ../sound.o \
        ../gui.o ../zip.o ../cheats.o romdisk.o
 
 KOS_ROMDISK_DIR = romdisk
