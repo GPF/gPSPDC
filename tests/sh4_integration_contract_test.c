@@ -98,6 +98,7 @@ static void expect_count(const char *name, const char *text, const char *needle,
 static void test_sh4_stub_async_exit_contract(void)
 {
   char *text = read_text_file("../dc/sh4_stub.c");
+  int failures_before = failures;
 
   if(text == NULL)
     return;
@@ -107,20 +108,22 @@ static void test_sh4_stub_async_exit_contract(void)
   expect_contains("cycle reload register", text, "mov.l %0, r13");
   expect_count("cycle reload call sites", text, "sh4_reload_cycles(cycles);",
    4);
-  expect_count("store update_gba cycle capture", text, "cycles = update_gba();",
-   3);
+  expect_count("update_gba cycle capture", text, "cycles = update_gba();",
+   4);
   expect_count("old store update_gba result capture", text,
    "result = update_gba();", 0);
   expect_count("shared pc lookup helper", text, "static void sh4_lookup_pc(void)",
    1);
 
   free(text);
-  printf("SH-4 async exit contract: ok\n");
+  if(failures == failures_before)
+    printf("SH-4 async exit contract: ok\n");
 }
 
 static void test_translation_cache_invalidation_contract(void)
 {
   char *text = read_text_file("../cpu_threaded.c");
+  int failures_before = failures;
 
   if(text == NULL)
     return;
@@ -133,7 +136,8 @@ static void test_translation_cache_invalidation_contract(void)
    "translate_invalidate_dcache();", 0);
 
   free(text);
-  printf("translation cache invalidation contract: ok\n");
+  if(failures == failures_before)
+    printf("translation cache invalidation contract: ok\n");
 }
 
 int main(void)
