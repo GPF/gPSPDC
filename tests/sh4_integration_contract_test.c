@@ -161,6 +161,25 @@ static void test_sh4_psr_store_contract(void)
     printf("SH-4 psr store irq contract: ok\n");
 }
 
+static void test_skyemu_cheat_contract(void)
+{
+  char *text = read_text_file("../cheats.c");
+  int failures_before = failures;
+
+  if(text == NULL)
+    return;
+
+  expect_contains("skyemu attribution", text, "adapted from SkyEmu");
+  expect_contains("par3 if stack", text, "if_stack[PAR3_IF_STACK_MAX]");
+  expect_contains("par3 ar if helper", text,
+   "static u32 par3_handle_ar_if(u32 left, u32 right)");
+  expect_contains("par3 else opcode", text, "case 0x60:");
+
+  free(text);
+  if(failures == failures_before)
+    printf("SkyEmu cheat contract: ok\n");
+}
+
 static void test_dynarec_cheat_hook_contract(void)
 {
   char *threaded = read_text_file("../cpu_threaded.c");
@@ -220,6 +239,7 @@ int main(void)
   test_sh4_stub_async_exit_contract();
   test_sh4_helpers_irq_contract();
   test_sh4_psr_store_contract();
+  test_skyemu_cheat_contract();
   test_dynarec_cheat_hook_contract();
   test_translation_cache_invalidation_contract();
 

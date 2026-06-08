@@ -24,28 +24,10 @@ cheat_type cheats[MAX_CHEATS];
 u32 num_cheats;
 u32 cheat_master_hook = 0xffffffff;
 
-#define PAR3_COND_MASK        0x38000000
-#define PAR3_WIDTH_MASK       0x06000000
-#define PAR3_ACTION_MASK      0xC0000000
-#define PAR3_COND_EQ          0x08000000
-#define PAR3_COND_NE          0x10000000
-#define PAR3_COND_LT          0x18000000
-#define PAR3_COND_GT          0x20000000
-#define PAR3_COND_ULT         0x28000000
-#define PAR3_COND_UGT         0x30000000
-#define PAR3_COND_AND         0x38000000
-#define PAR3_ACTION_NEXT      0x00000000
-#define PAR3_ACTION_NEXT_TWO  0x40000000
-#define PAR3_ACTION_BLOCK     0x80000000
-#define PAR3_OTHER_ENDIF      0x40000000
-#define PAR3_OTHER_ELSE       0x60000000
+/* PAR v3 / Gameshark v3 cheat decoding adapted from SkyEmu (MIT License).
+   See THIRD_PARTY_NOTICES.md */
 
-typedef enum
-{
-  PAR3_FLOW_NORMAL = 0,
-  PAR3_FLOW_SKIP_TO_ELSE,
-  PAR3_FLOW_SKIP_TO_ENDIF
-} par3_flow_type;
+#define PAR3_IF_STACK_MAX 32
 
 static void cheat_set_master_hook(u32 pcaddr)
 {
@@ -58,63 +40,67 @@ static void cheat_set_master_hook(u32 pcaddr)
   }
 }
 
-static u32 par3_addr(u32 op1)
+static u32 par3_ar_address(u32 left)
 {
-  return (op1 & 0xFFFFF) + ((op1 << 4) & 0x0F000000);
+  return ((left << 4) & 0x0F000000) | (left & 0x000FFFFF);
 }
 
-static u32 par3_width(u32 op1)
+static u32 par3_handle_ar_if(u32 left, u32 right)
 {
-  return 1 << ((op1 & PAR3_WIDTH_MASK) >> 25);
-}
+  u32 address = par3_ar_address(left);
+  u32 current_code = (left >> 24) & 0xFF;
+  u32 left_compare = read_memory32(address);
+  u32 right_compare = right;
+  s32 left_signed;
+  s32 right_signed;
 
-static u32 par3_read(u32 address, u32 width)
-{
-  switch(width)
+  switch(current_code & 0x06)
   {
-    case 1:
-      return read_memory8(address);
+    case 0x00:
+      left_compare &= 0xFF;
+      right_compare &= 0xFF;
+      left_signed = (s8)left_compare;
+      right_signed = (s8)right_compare;
+      break;
 
-    case 2:
-      return read_memory16(address);
+    case 0x02:
+      left_compare &= 0xFFFF;
+      right_compare &= 0xFFFF;
+      left_signed = (s16)left_compare;
+      right_signed = (s16)right_compare;
+      break;
+
+    case 0x04:
+      left_signed = (s32)left_compare;
+      right_signed = (s32)right_compare;
+      break;
 
     default:
-      return read_memory32(address);
+      return 0;
   }
-}
 
-static u32 par3_condition_pass(u32 cond, u32 memval, u32 operand, u32 width)
-{
-  switch(cond)
+  switch(current_code & 0x38)
   {
-    case PAR3_COND_EQ:
-      return memval == operand;
+    case 0x08:
+      return left_compare == right_compare;
 
-    case PAR3_COND_NE:
-      return memval != operand;
+    case 0x10:
+      return left_compare != right_compare;
 
-    case PAR3_COND_LT:
-      if(width == 1)
-        return (s8)memval < (s8)operand;
-      if(width == 2)
-        return (s16)memval < (s16)operand;
-      return (s32)memval < (s32)operand;
+    case 0x18:
+      return left_signed < right_signed;
 
-    case PAR3_COND_GT:
-      if(width == 1)
-        return (s8)memval > (s8)operand;
-      if(width == 2)
-        return (s16)memval > (s16)operand;
-      return (s32)memval > (s32)operand;
+    case 0x20:
+      return left_signed > right_signed;
 
-    case PAR3_COND_ULT:
-      return memval < operand;
+    case 0x28:
+      return left_compare < right_compare;
 
-    case PAR3_COND_UGT:
-      return memval > operand;
+    case 0x30:
+      return left_compare > right_compare;
 
-    case PAR3_COND_AND:
-      return (memval & operand) != 0;
+    case 0x38:
+      return left_compare && right_compare;
 
     default:
       return 0;
@@ -136,30 +122,6 @@ static u32 gs1_if_pass(u32 cond, u32 memval, u32 operand)
 
     case 3:
       return (s16)memval >= (s16)operand;
-
-    default:
-      return 0;
-  }
-}
-
-static u32 par3_handle_special(u32 value, par3_flow_type *flow)
-{
-  switch(value & 0xFE000000)
-  {
-    case PAR3_OTHER_ENDIF:
-      *flow = PAR3_FLOW_NORMAL;
-      return 1;
-
-    case PAR3_OTHER_ELSE:
-      if(*flow == PAR3_FLOW_SKIP_TO_ELSE)
-        *flow = PAR3_FLOW_NORMAL;
-      else
-      if(*flow == PAR3_FLOW_NORMAL)
-        *flow = PAR3_FLOW_SKIP_TO_ENDIF;
-      return 1;
-
-    case 0x00000000:
-      return 2;
 
     default:
       return 0;
@@ -410,196 +372,258 @@ void process_cheat_gs1(cheat_type *cheat)
 
 void process_cheat_gs3(cheat_type *cheat)
 {
-  u32 cheat_opcode;
-  u32 *code_ptr = cheat->cheat_codes;
-  u32 address, value;
+  u32 if_stack[PAR3_IF_STACK_MAX];
+  u32 if_stack_index = 0;
+  u32 *codes = cheat->cheat_codes;
+  u32 num_lines = cheat->num_cheat_lines;
   u32 i;
-  par3_flow_type flow = PAR3_FLOW_NORMAL;
-  u32 skip_lines = 0;
+  u32 pad = (~io_registers[REG_P1]) & 0x3FF;
 
-  for(i = 0; i < cheat->num_cheat_lines; i++)
+  if_stack[0] = 1;
+
+  for(i = 0; i < num_lines; i++)
   {
-    address = code_ptr[0];
-    value = code_ptr[1];
+    u32 left = codes[i * 2];
+    u32 right = codes[i * 2 + 1];
+    u32 current_code;
+    u32 address;
 
-    code_ptr += 2;
+    if(!if_stack[if_stack_index])
+      continue;
 
-    if(value == 0x001DC0DE)
+    if(right == 0x001DC0DE)
     {
-      cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFF));
+      cheat_set_master_hook(0x08000000 | (left & 0x1FFFFFF));
       continue;
     }
 
-    if(address == 0x00000000)
+    if(left != 0)
     {
-      u32 special = par3_handle_special(value, &flow);
+      current_code = (left >> 24) & 0xFF;
+      address = par3_ar_address(left);
 
-      if(special == 2)
-        break;
-
-      if(special != 0)
-        continue;
-    }
-
-    if(flow == PAR3_FLOW_SKIP_TO_ELSE || flow == PAR3_FLOW_SKIP_TO_ENDIF)
-    {
-      if(address == 0x00000000)
-        par3_handle_special(value, &flow);
-
-      continue;
-    }
-
-    if(skip_lines > 0)
-    {
-      skip_lines--;
-      continue;
-    }
-
-    if((address & PAR3_COND_MASK) != 0)
-    {
-      u32 width = par3_width(address);
-      u32 memval = par3_read(par3_addr(address), width);
-      u32 operand = value & ((width == 4) ? 0xFFFFFFFF :
-       ((width == 2) ? 0xFFFF : 0xFF));
-      u32 pass = par3_condition_pass(address & PAR3_COND_MASK, memval,
-       operand, width);
-
-      switch(address & PAR3_ACTION_MASK)
+      switch(current_code)
       {
-        case PAR3_ACTION_NEXT:
-          if(!pass)
-            skip_lines = 1;
+        case 0x00:
+        {
+          u32 offset = right >> 8;
+          write_memory8(address + offset, right & 0xFF);
+          break;
+        }
+
+        case 0x02:
+        {
+          u32 offset = right >> 16;
+          write_memory16(address + (offset * 2), right & 0xFFFF);
+          break;
+        }
+
+        case 0x04:
+          write_memory32(address, right);
           break;
 
-        case PAR3_ACTION_NEXT_TWO:
-          if(!pass)
-            skip_lines = 2;
+        case 0x40:
+        {
+          u32 offset = right >> 8;
+          address = read_memory32(address);
+          write_memory8(address + offset, right & 0xFF);
+          break;
+        }
+
+        case 0x42:
+        {
+          u32 offset = right >> 16;
+          address = read_memory32(address);
+          write_memory16(address + (offset * 2), right & 0xFFFF);
+          break;
+        }
+
+        case 0x44:
+          address = read_memory32(address);
+          write_memory32(address, right);
           break;
 
-        case PAR3_ACTION_BLOCK:
-          if(pass)
-            flow = PAR3_FLOW_NORMAL;
+        case 0x80:
+        {
+          u8 data = right & 0xFF;
+          write_memory8(address, read_memory8(address) + data);
+          break;
+        }
+
+        case 0x82:
+        {
+          u16 data = right & 0xFFFF;
+          write_memory16(address, read_memory16(address) + data);
+          break;
+        }
+
+        case 0x84:
+          write_memory32(address, read_memory32(address) + right);
+          break;
+
+        case 0xC4:
+          cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFE));
+          break;
+
+        case 0xC6:
+          write_memory16(0x04000000 | (left & 0xFFFFFF), right & 0xFFFF);
+          break;
+
+        case 0xC7:
+          write_memory32(0x04000000 | (left & 0xFFFFFF), right);
+          break;
+
+        default:
+        {
+          u32 condition = par3_handle_ar_if(left, right);
+
+          switch(current_code & 0xC0)
+          {
+            case 0x00:
+              if(!condition)
+              {
+                i++;
+                continue;
+              }
+              /* fall through */
+
+            case 0x40:
+              if(!condition)
+              {
+                i += 2;
+                continue;
+              }
+              break;
+
+            case 0x80:
+              break;
+
+            case 0xC0:
+              if(!condition)
+                return;
+              break;
+          }
+
+          if(if_stack_index + 1 >= PAR3_IF_STACK_MAX)
+            return;
+
+          if_stack_index++;
+          if_stack[if_stack_index] = condition;
+          break;
+        }
+      }
+    }
+    else
+    {
+      current_code = (right >> 24) & 0xFF;
+
+      if(right == 0)
+        return;
+
+      switch(current_code)
+      {
+        case 0x60:
+          if_stack[if_stack_index] ^= 1;
+          break;
+
+        case 0x40:
+          if(if_stack_index == 0)
+            return;
+          if_stack_index--;
+          break;
+
+        case 0x08:
+          break;
+
+        case 0x18:
+        case 0x1A:
+        case 0x1C:
+        case 0x1E:
+          if(i + 1 >= num_lines)
+            return;
+          address = 0x08000000 | ((right & 0xFFFFFF) << 1);
+          write_memory16(address, codes[(i + 1) * 2] & 0xFFFF);
+          i++;
+          break;
+
+        case 0x10:
+          if(i + 1 >= num_lines)
+            return;
+          if(pad != 0x3FF)
+          {
+            address = par3_ar_address(right);
+            write_memory8(address, codes[(i + 1) * 2] & 0xFF);
+          }
+          i++;
+          break;
+
+        case 0x12:
+          if(i + 1 >= num_lines)
+            return;
+          if(pad != 0x3FF)
+          {
+            address = par3_ar_address(right);
+            write_memory16(address, codes[(i + 1) * 2] & 0xFFFF);
+          }
+          i++;
+          break;
+
+        case 0x14:
+          if(i + 1 >= num_lines)
+            return;
+          if(pad != 0x3FF)
+          {
+            address = par3_ar_address(right);
+            write_memory32(address, codes[(i + 1) * 2]);
+          }
+          i++;
+          break;
+
+        case 0x80:
+        case 0x82:
+        case 0x84:
+        {
+          u32 next_left, next_right;
+          u32 repeat, data_increment, address_increment, data, j;
+
+          if(i + 1 >= num_lines)
+            return;
+
+          next_left = codes[(i + 1) * 2];
+          next_right = codes[(i + 1) * 2 + 1];
+          address = par3_ar_address(right);
+          repeat = (next_right >> 16) & 0xFF;
+          data_increment = (next_right >> 24) & 0xFF;
+          address_increment = next_right & 0xFFFF;
+          data = next_left;
+
+          if((current_code & 0x0F) == 0x02)
+            address_increment *= 2;
           else
-            flow = PAR3_FLOW_SKIP_TO_ELSE;
+          if((current_code & 0x0F) == 0x04)
+            address_increment *= 4;
+
+          for(j = 0; j < repeat; j++)
+          {
+            if((current_code & 0x0F) == 0x02)
+              write_memory16(address, data & 0xFFFF);
+            else
+            if((current_code & 0x0F) == 0x04)
+              write_memory32(address, data);
+            else
+              write_memory8(address, data & 0xFF);
+
+            address += address_increment;
+            data += data_increment;
+          }
+
+          i++;
+          break;
+        }
+
+        default:
           break;
       }
-
-      continue;
-    }
-
-    if((address & 0xFF000000) == 0xC4000000)
-    {
-      cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFE));
-      continue;
-    }
-
-    cheat_opcode = address >> 28;
-    address &= 0xFFFFFFF;
-
-    switch(cheat_opcode)
-    {
-      case 0x0:
-        cheat_opcode = (address >> 24) & 0x0F;
-        address = (address & 0xFFFFF) + ((address << 4) & 0xF000000);
-
-        switch(cheat_opcode)
-        {
-          case 0x0:
-          {
-            u32 iterations = value >> 24;
-            u32 i2;
-
-            value &= 0xFF;
-
-            for(i2 = 0; i2 <= iterations; i2++, address++)
-            {
-              write_memory8(address, value);
-            }
-            break;
-          }
-
-          case 0x2:
-          {
-            u32 iterations = value >> 16;
-            u32 i2;
-
-            value &= 0xFFFF;
-
-            for(i2 = 0; i2 <= iterations; i2++, address += 2)
-            {
-              write_memory16(address, value);
-            }
-            break;
-          }
-
-          case 0x4:
-            write_memory32(address, value);
-            break;
-        }
-        break;
-
-      case 0x4:
-        cheat_opcode = (address >> 24) & 0x0F;
-        address = (address & 0xFFFFF) + ((address << 4) & 0xF000000);
-
-        switch(cheat_opcode)
-        {
-          case 0x0:
-            address = read_memory32(address) + (value >> 24);
-            write_memory8(address, value & 0xFF);
-            break;
-
-          case 0x2:
-            address = read_memory32(address) + ((value >> 16) * 2);
-            write_memory16(address, value & 0xFFFF);
-            break;
-
-          case 0x4:
-            address = read_memory32(address);
-            write_memory32(address, value);
-            break;
-
-        }
-        break;
-
-      case 0x8:
-        cheat_opcode = (address >> 24) & 0x0F;
-        address = (address & 0xFFFFF) + ((address << 4) & 0xF000000);
-
-        switch(cheat_opcode)
-        {
-          case 0x0:
-            value = (value & 0xFF) + read_memory8(address);
-            write_memory8(address, value);
-            break;
-
-          case 0x2:
-            value = (value & 0xFFFF) + read_memory16(address);
-            write_memory16(address, value);
-            break;
-
-          case 0x4:
-            value = value + read_memory32(address);
-            write_memory32(address, value);
-            break;
-        }
-        break;
-
-      case 0xC:
-        cheat_opcode = (address >> 24) & 0x0F;
-        address = (address & 0xFFFFFF) + 0x4000000;
-
-        switch(cheat_opcode)
-        {
-          case 0x6:
-            write_memory16(address, value);
-            break;
-
-          case 0x7:
-            write_memory32(address, value);
-            break;
-        }
-        break;
     }
   }
 }
