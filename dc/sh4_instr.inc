@@ -244,15 +244,6 @@
     generate_indirect_branch_dual();                                          \
   }                                                                           \
 
-typedef enum
-{
-  CONDITION_TRUE,
-  CONDITION_FALSE,
-  CONDITION_EQUAL,
-  CONDITION_NOT_EQUAL
-} condition_check_type;
-
-
 #define generate_condition_eq(ireg_a, ireg_b)                                 \
   generate_load_reg(ireg_a, REG_Z_FLAG);                                      \
   condition_check = CONDITION_TRUE                                            \
@@ -758,6 +749,7 @@ typedef enum
   generate_mov(s0, rv);                                                       \
   generate_load_reg(a0, rn);                                                  \
   generate_load_reg(a1, rm);                                                  \
+  generate_load_pc(a2, (pc + 4));                                             \
   generate_function_call(execute_store_##type);                               \
   generate_store_reg(s0, rd);                                                 \
 }                                                                             \
@@ -804,11 +796,14 @@ typedef enum
 }                                                                             \
 
 #define generate_store_reg_pc_thumb(ireg)                                     \
-  generate_store_reg(ireg, rd);                                               \
-  if(rd == 15)                                                                \
-  {                                                                           \
-    generate_indirect_branch_cycle_update(thumb);                             \
-  }                                                                           \
+  do {                                                                        \
+    generate_store_reg(ireg, rd);                                             \
+    if(rd == 15)                                                              \
+    {                                                                         \
+      SH4_EMIT_MOV(sh4_reg_r4, SH4_IREG(ireg));                               \
+      generate_indirect_branch_cycle_update(thumb);                           \
+    }                                                                         \
+  } while(0)
 
 #define thumb_data_proc_hi(name)                                              \
 {                                                                             \

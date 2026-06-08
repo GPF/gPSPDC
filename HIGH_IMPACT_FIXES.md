@@ -19,7 +19,7 @@ Analysis of the highest-impact fixes for the **gPSPDC** Dreamcast port (`dreamca
 
 ## Phase 1 — Complete SH-4 dynarec (P1)
 
-**Status:** Complete (audited)
+**Status:** Complete (audited and polished)
 
 Dreamcast uses `execute_arm_translate()` via the SH-4 dynarec backend.
 
@@ -29,15 +29,19 @@ Dreamcast uses `execute_arm_translate()` via the SH-4 dynarec backend.
 | CPSR/SPSR/SWI | In `dc/sh4_helpers.c` |
 | Conditional branches + idle loops | In `dc/sh4_emit.h` |
 | Block memory (dynarec) | Full macros via `dc/sh4_instr.inc` (x86 port) |
-| `generate_update_pc_reg` | Fixed to pass `pc` into `sh4_update_gba`; added to MIPS emit |
+| `generate_update_pc_reg` | Passes `pc`, reloads cycle counter from `sh4_update_gba` return |
 
 **Audit polish (Phase 1):**
 
-- `generate_update_pc_reg()` passes PC correctly on SH-4 and MIPS
-- `execute_swi()` return type corrected to `void`
-- Removed noisy Dreamcast config/cheat debug `printf`s from `memory.c`
+- Extended `SH4_EMIT_LOAD/STORE_REG` for `reg[16+]` (flags, CPSR) via indexed addressing
+- Fixed conditional branch patch (`generate_branch_patch_conditional`) and relative offset (`+4` delay slot)
+- `sh4_update_gba` tail-jumps on IRQ/PC change; emitted code reloads `r13` from return value
+- `execute_store_*` takes instruction PC (third arg) instead of corrupting `REG_PC` with the address
+- Added `get_shift_imm` / `generate_shift_reg`; Thumb hi-reg PC branches move target into `r4`
+- `SH4_EMIT_CMP_REG` uses `cmp/str` (sets T flag); `swi_hle_div` remainder fix
+- Host test: `tests/phase1_helpers_test.c`
 
-**Remaining risks:** hardware validation on real Dreamcast; dynarec edge cases may still need game-specific testing.
+**Remaining risks:** hardware validation on real Dreamcast/KOS toolchain; dynarec edge cases may still need game-specific testing.
 
 ---
 
@@ -57,11 +61,15 @@ Affects games using privileged-mode register bank switching or `STM`/`LDM` with 
 
 ## Phase 3 — Memory limits on Dreamcast (P3)
 
-**Status:** Not started
+**Status:** Complete
 
-Dreamcast is capped at **8 MB** ROM buffer with **8 KB** pages vs **32 MB / 32 KB** on other platforms (`memory.c`).
+Unified gamepak swap paging in `memory.c`:
 
-**Impact:** Blocks larger ROMs; increases swap churn for mid-size games.
+- **32 KB pages everywhere** — `GAMEPAK_SWAP_PAGE_SIZE` used for buffer page count, `load_gamepak_page()`, and `evict_gamepak_page()` (fixes prior 8 KB / 32 KB mismatch on Dreamcast).
+- **Dreamcast ROM buffer** — tries **16 MB**, then **12 / 8 / 4 MB** on `malloc` failure (was a fixed 8 MB with wrong page math).
+- **Graceful failure** — `init_gamepak_buffer()` returns early if allocation fails instead of dereferencing NULL.
+
+**Impact:** Larger ROMs can stay resident longer on DC; swapped ROM paging is consistent across platforms.
 
 ---
 
@@ -82,7 +90,7 @@ Dreamcast is capped at **8 MB** ROM buffer with **8 KB** pages vs **32 MB / 32 K
 | **0** | Restore `blit_to_screen` | Small | Fixes visible menu/savestate UI |
 | **1** | Complete SH-4 dynarec stub + emit | Large | Full-speed play; idle-loop games |
 | **2** | LDM/STM interpreter fixes | Medium | Compatibility for edge-case games ✓ |
-| **3** | ROM buffer / paging strategy | Medium | Large ROM support |
+| **3** | ROM buffer / paging strategy | Medium | Large ROM support ✓ |
 | **4** | Remove debug prints | Trivial | Polish |
 
 ```mermaid

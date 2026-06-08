@@ -41,7 +41,7 @@ typedef enum {
   SH4_EMIT_BYTE(0x0009)
 
 #define SH4_RELATIVE_OFFSET(source, target) \
-  (((u32)(target) - ((u32)(source) + 2)) >> 1)
+  (((u32)(target) - ((u32)(source) + 4)) >> 1)
 
 #define SH4_EMIT_MOV(rd, rm) \
   SH4_EMIT_BYTE(0x6003 | ((rd & 0xF) << 8) | ((rm & 0xF) << 4))
@@ -72,6 +72,30 @@ typedef enum {
 
 #define SH4_EMIT_SW(rd, rn, offset) \
   SH4_EMIT_BYTE(0x2006 | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | (((offset) >> 2) & 0xF))
+
+#define SH4_EMIT_LOAD_MEM_W(rd, rn, byte_offset) \
+  do { \
+    u32 _byte_off = (u32)(byte_offset); \
+    if(_byte_off <= 60 && ((_byte_off & 3) == 0)) { \
+      SH4_EMIT_LW(rd, rn, _byte_off); \
+    } else { \
+      SH4_EMIT_LOAD_IMM(sh4_reg_r2, _byte_off); \
+      SH4_EMIT_ADD(sh4_reg_r2, rn, sh4_reg_r2); \
+      SH4_EMIT_LW(rd, sh4_reg_r2, 0); \
+    } \
+  } while(0)
+
+#define SH4_EMIT_STORE_MEM_W(rd, rn, byte_offset) \
+  do { \
+    u32 _byte_off = (u32)(byte_offset); \
+    if(_byte_off <= 60 && ((_byte_off & 3) == 0)) { \
+      SH4_EMIT_SW(rd, rn, _byte_off); \
+    } else { \
+      SH4_EMIT_LOAD_IMM(sh4_reg_r2, _byte_off); \
+      SH4_EMIT_ADD(sh4_reg_r2, rn, sh4_reg_r2); \
+      SH4_EMIT_SW(rd, sh4_reg_r2, 0); \
+    } \
+  } while(0)
 
 #define SH4_EMIT_ADDI(rd, rn, imm) \
   do { \
@@ -146,10 +170,10 @@ typedef enum {
   } while(0)
 
 #define SH4_EMIT_LOAD_REG(ireg, reg_index) \
-  SH4_EMIT_LW(ireg, REG_BASE, (reg_index) * 4)
+  SH4_EMIT_LOAD_MEM_W(ireg, REG_BASE, (reg_index) * 4)
 
 #define SH4_EMIT_STORE_REG(ireg, reg_index) \
-  SH4_EMIT_SW(ireg, REG_BASE, (reg_index) * 4)
+  SH4_EMIT_STORE_MEM_W(ireg, REG_BASE, (reg_index) * 4)
 
 #define SH4_EMIT_FUNCTION_CALL(func) \
   do { \
@@ -161,7 +185,7 @@ typedef enum {
   SH4_EMIT_BYTE(0x2008 | ((rd & 0xF) << 8) | ((rd & 0xF) << 4))
 
 #define SH4_EMIT_CMP_REG(rn, rm) \
-  SH4_EMIT_SUB(sh4_reg_r0, rn, rm)
+  SH4_EMIT_BYTE(0x200C | ((rn & 0xF) << 8) | ((rm & 0xF) << 4))
 
 typedef enum {
   CONDITION_TRUE,
@@ -242,6 +266,15 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_rotate_right(ireg, imm_val) \
   do { u32 _sh = (imm_val); while(_sh--) SH4_EMIT_ROTR1(SH4_IREG(ireg)); } while(0)
 
+#define get_shift_imm() \
+  u32 shift = (opcode >> 7) & 0x1F
+
+#define generate_shift_reg(ireg, name, flags_op) \
+  generate_load_reg_pc(ireg, rm, 12); \
+  generate_load_reg(a1, ((opcode >> 8) & 0x0F)); \
+  generate_function_call(execute_##name##_##flags_op##_reg); \
+  generate_mov(ireg, rv)
+
 #define generate_add_reg_reg_imm(ireg_dest, ireg_src, imm) \
   do { \
     generate_mov(ireg_dest, ireg_src); \
@@ -276,7 +309,8 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_cycle_update_force() generate_cycle_update()
 
 #define generate_branch_patch_conditional(dest, offset) \
-  ((u8 *)(dest))[1] = (SH4_RELATIVE_OFFSET((dest), (offset)) & 0xFF)
+  *((u16 *)(dest)) = ((*((u16 *)(dest)) & 0xFF00) | \
+   (SH4_RELATIVE_OFFSET((dest), (offset)) & 0xFF))
 
 #define generate_branch_patch_unconditional(dest, offset) \
   do { \
@@ -287,10 +321,14 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_update_pc(new_pc) \
   SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc)
 
+#define SH4_EMIT_RELOAD_CYCLES() \
+  SH4_EMIT_MOV(REG_CYCLES, sh4_reg_r0)
+
 #define generate_update_pc_reg() \
   do { \
     SH4_EMIT_LOAD_IMM(sh4_reg_r4, pc); \
     SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \
+    SH4_EMIT_RELOAD_CYCLES(); \
   } while(0)
 
 #define generate_branch_filler_true(ireg_dest, ireg_src, writeback_location) \
@@ -326,12 +364,14 @@ u32 function_cc execute_arm_translate(u32 cycles);
     if(pc == idle_loop_target_pc) { \
       SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc); \
       SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \
+      SH4_EMIT_RELOAD_CYCLES(); \
       SH4_EMIT_BRA_FILLER(writeback_location); \
     } else { \
       SH4_EMIT_TST_REG(REG_CYCLES); \
       SH4_EMIT_BT_FILLER(_skip_update); \
       SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc); \
       SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \
+      SH4_EMIT_RELOAD_CYCLES(); \
       generate_branch_patch_conditional(_skip_update, translation_ptr); \
       SH4_EMIT_BRA_FILLER(writeback_location); \
     } \

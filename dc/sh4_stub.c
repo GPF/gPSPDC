@@ -38,6 +38,7 @@ static inline void extract_flags_local(void)
 u32 sh4_update_gba(u32 pc)
 {
   u32 cycles;
+  u32 new_pc;
 
   reg[REG_PC] = pc;
   collapse_flags();
@@ -45,13 +46,13 @@ u32 sh4_update_gba(u32 pc)
 
   if(reg[CHANGED_PC_STATUS] != 0)
   {
-    u32 new_pc = reg[REG_PC];
+    new_pc = reg[REG_PC];
     reg[CHANGED_PC_STATUS] = 0;
 
     if(reg[REG_CPSR] & 0x20)
-      return (u32)block_lookup_address_thumb(new_pc);
+      ((void (*)(void))block_lookup_address_thumb(new_pc))();
     else
-      return (u32)block_lookup_address_arm(new_pc);
+      ((void (*)(void))block_lookup_address_arm(new_pc))();
   }
 
   return cycles;
@@ -75,9 +76,9 @@ void sh4_indirect_branch_dual(u32 address)
   ((void (*)(void))target)();
 }
 
-void function_cc execute_store_u8(u32 address, u32 value)
+void function_cc execute_store_u8(u32 address, u32 value, u32 pc)
 {
-  reg[REG_PC] = address;
+  reg[REG_PC] = pc;
 
   if(!(address & 0xF0000000))
   {
@@ -134,10 +135,10 @@ lookup_pc:
     ((void (*)(void))block_lookup_address_arm(address))();
 }
 
-void function_cc execute_store_u16(u32 address, u32 value)
+void function_cc execute_store_u16(u32 address, u32 value, u32 pc)
 {
   address &= ~0x1;
-  reg[REG_PC] = address;
+  reg[REG_PC] = pc;
 
   if(!(address & 0xF0000000))
   {
@@ -194,10 +195,10 @@ lookup_pc:
     ((void (*)(void))block_lookup_address_arm(address))();
 }
 
-void function_cc execute_store_u32(u32 address, u32 value)
+void function_cc execute_store_u32(u32 address, u32 value, u32 pc)
 {
   address &= ~0x3;
-  reg[REG_PC] = address;
+  reg[REG_PC] = pc;
 
   if(!(address & 0xF0000000))
   {

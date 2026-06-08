@@ -21,6 +21,10 @@
 #include "memory.h"
 #include "zip.h"
 
+#define GAMEPAK_SWAP_PAGE_SIZE      (32 * 1024)
+#define GAMEPAK_SWAP_PAGE_SHIFT     15
+#define GAMEPAK_ROM_MAP_BASE_INDEX  (0x08000000 >> GAMEPAK_SWAP_PAGE_SHIFT)
+
 u8 bios_rom[1024 * 32];
 u32 bios_read_protect;
 
@@ -2905,31 +2909,31 @@ u32 evict_gamepak_page()
 
   physical_index = gamepak_memory_map[page_index].physical_index;
 
-  memory_map_read[(0x8000000 / (32 * 1024)) + physical_index] = NULL;
-  memory_map_read[(0xA000000 / (32 * 1024)) + physical_index] = NULL;
-  memory_map_read[(0xC000000 / (32 * 1024)) + physical_index] = NULL;
+  memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] = NULL;
+  memory_map_read[(0x0A000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = NULL;
+  memory_map_read[(0x0C000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = NULL;
 
   return page_index;
 }
 
 u8 *load_gamepak_page(u32 physical_index)
 {
-  if(physical_index >= (gamepak_size >> 15))
+  if(physical_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
     return gamepak_rom;
 
   u32 page_index = evict_gamepak_page();
-  u32 page_offset = page_index * (32 * 1024);
+  u32 page_offset = page_index * GAMEPAK_SWAP_PAGE_SIZE;
   u8 *swap_location = gamepak_rom + page_offset;
 
   gamepak_memory_map[page_index].page_timestamp = page_time;
   gamepak_memory_map[page_index].physical_index = physical_index;
   page_time++;
 
-  file_seek(gamepak_file_large, physical_index * (32 * 1024), SEEK_SET);
-  file_read(gamepak_file_large, swap_location, (32 * 1024));
-  memory_map_read[(0x8000000 / (32 * 1024)) + physical_index] = swap_location;
-  memory_map_read[(0xA000000 / (32 * 1024)) + physical_index] = swap_location;
-  memory_map_read[(0xC000000 / (32 * 1024)) + physical_index] = swap_location;
+  file_seek(gamepak_file_large, physical_index * GAMEPAK_SWAP_PAGE_SIZE, SEEK_SET);
+  file_read(gamepak_file_large, swap_location, GAMEPAK_SWAP_PAGE_SIZE);
+  memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] = swap_location;
+  memory_map_read[(0x0A000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = swap_location;
+  memory_map_read[(0x0C000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = swap_location;
 
   // If RTC is active page the RTC register bytes so they can be read
   if((rtc_state != RTC_DISABLED) && (physical_index == 0))
@@ -2968,41 +2972,60 @@ void init_memory_gamepak()
   }
 }
 
+static u32 try_gamepak_buffer_alloc(u32 size)
+{
+  gamepak_ram_buffer_size = size;
+  gamepak_rom = malloc(size);
+  return (gamepak_rom != NULL);
+}
+
 void init_gamepak_buffer()
 {
-  // Try to initialize 32MB (this is mainly for non-PSP platforms)
   gamepak_rom = NULL;
-#ifndef _arch_dreamcast
-  gamepak_ram_buffer_size = 32 * 1024 * 1024;
-  gamepak_rom = malloc(gamepak_ram_buffer_size);
+  gamepak_memory_map = NULL;
+  gamepak_ram_pages = 0;
 
-  if(gamepak_rom == NULL)
+#ifdef _arch_dreamcast
   {
-    // Try 16MB, for PSP, then lower in 2MB increments
-    gamepak_ram_buffer_size = 16 * 1024 * 1024;
-    gamepak_rom = malloc(gamepak_ram_buffer_size);
-
-    while(gamepak_rom == NULL)
+    static const u32 dc_buffer_sizes[] =
     {
-      gamepak_ram_buffer_size -= (2 * 1024 * 1024);
-      gamepak_rom = malloc(gamepak_ram_buffer_size);
+      16 * 1024 * 1024,
+      12 * 1024 * 1024,
+      8 * 1024 * 1024,
+      4 * 1024 * 1024,
+      0
+    };
+    u32 i;
+
+    for(i = 0; dc_buffer_sizes[i] != 0; i++)
+    {
+      if(try_gamepak_buffer_alloc(dc_buffer_sizes[i]))
+        break;
     }
+
+    if(gamepak_rom == NULL)
+      try_gamepak_buffer_alloc(4 * 1024 * 1024);
   }
 #else
-      gamepak_ram_buffer_size = 8 * 1024 * 1024;
-      gamepak_rom = malloc(gamepak_ram_buffer_size);
+  if(!try_gamepak_buffer_alloc(32 * 1024 * 1024))
+  {
+    if(!try_gamepak_buffer_alloc(16 * 1024 * 1024))
+    {
+      while(!try_gamepak_buffer_alloc(gamepak_ram_buffer_size - (2 * 1024 * 1024)) &&
+       gamepak_ram_buffer_size > (4 * 1024 * 1024))
+        ;
+    }
+  }
 #endif
 
-#ifndef _arch_dreamcast
-  // Here's assuming we'll have enough memory left over for this,
-  // and that the above succeeded (if not we're in trouble all around)
-  gamepak_ram_pages = gamepak_ram_buffer_size / (32 * 1024);
-  gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) *
-   gamepak_ram_pages);
-#else
-  gamepak_ram_pages = gamepak_ram_buffer_size / (8 * 1024);
+  if(gamepak_rom == NULL)
+    return;
+
+  gamepak_ram_pages = gamepak_ram_buffer_size / GAMEPAK_SWAP_PAGE_SIZE;
+  if(gamepak_ram_pages == 0)
+    gamepak_ram_pages = 1;
+
   gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) * gamepak_ram_pages);
-#endif
 }
 
 void init_memory()

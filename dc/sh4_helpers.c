@@ -522,9 +522,12 @@ void function_cc execute_swi(u32 pc)
 }
 void swi_hle_div()
 {
-  s32 result = (s32)reg[0] / (s32)reg[1];
+  s32 dividend = (s32)reg[0];
+  s32 divisor = (s32)reg[1];
+  s32 result = dividend / divisor;
+
   reg[0] = result;
-  reg[1] = (s32)reg[0] % (s32)reg[1];
+  reg[1] = dividend % divisor;
   reg[3] = (result ^ (result >> 31)) - (result >> 31);
 }
 u8 swi_hle_handle[256] =
