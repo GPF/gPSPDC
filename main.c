@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
 
   // Copy the directory path of the executable into main_path
 #ifndef _arch_dreamcast
-  getcwd(main_path);
+  getcwd(main_path, sizeof(main_path));
 #else
   getcwd(main_path,512);
 #endif

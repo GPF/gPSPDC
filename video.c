@@ -3552,11 +3552,15 @@ void video_resolution_large()
   if(current_scale != unscaled)
   {
     current_scale = unscaled;
+#ifdef _arch_dreamcast
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
+#endif
     screen = SDL_SetVideoMode(512, 512, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
     resolution_width = 480;
     resolution_height = 272;
+#ifdef _arch_dreamcast
     SDL_DC_SetWindow(resolution_width,resolution_height);
+#endif
   }
 }
 
@@ -3565,12 +3569,16 @@ void video_resolution_small()
   if(current_scale != screen_scale)
   {
     current_scale = screen_scale;
+#ifdef _arch_dreamcast
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
+#endif
     screen = SDL_SetVideoMode(256 * video_scale,
      256 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
     resolution_width = small_resolution_width;
     resolution_height = small_resolution_height;
+#ifdef _arch_dreamcast
     SDL_DC_SetWindow(resolution_width,resolution_height);   
+#endif
   }
 }
 
