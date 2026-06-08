@@ -11,7 +11,14 @@ typedef uint16_t u16;
 typedef int32_t s32;
 typedef uint32_t u32;
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#endif
 #include "../dc/sh4_emit.h"
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 translation_ptr_t translation_ptr;
 
