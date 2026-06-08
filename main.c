@@ -271,10 +271,9 @@ printf("Loading files...\n");
 
   // We'll never actually return from here.
 
-#ifdef PSP_BUILD
+#if defined(PSP_BUILD) || defined(_arch_dreamcast)
   execute_arm_translate(execute_cycles);
 #else
-//  execute_arm_translate(execute_cycles);
   execute_arm(execute_cycles);
 #endif
   return 0;

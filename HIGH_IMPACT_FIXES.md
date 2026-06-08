@@ -19,63 +19,57 @@ Analysis of the highest-impact fixes for the **gPSPDC** Dreamcast port (`dreamca
 
 ## Phase 1 — Complete SH-4 dynarec (P1)
 
-**Status:** Not started
+**Status:** Complete (audited and polished)
 
-Dreamcast runs the **interpreter**, not the dynarec:
-
-```c
-// main.c
-#ifdef PSP_BUILD
-  execute_arm_translate(execute_cycles);
-#else
-  execute_arm(execute_cycles);  // Dreamcast path
-#endif
-```
-
-The SH-4 dynarec (`dc/sh4_emit.h`, `dc/sh4_stub.c`) is an initial scaffold (~554 lines vs ~2300+ on PSP MIPS).
+Dreamcast uses `execute_arm_translate()` via the SH-4 dynarec backend.
 
 | Area | Status |
 |------|--------|
-| Load helpers (`sh4_execute_load_u8/u16/u32/s8/s16`) | Declared in `sh4_emit.h`, not implemented in `sh4_stub.c` |
-| CPSR/SPSR/SWI (`sh4_execute_read_cpsr`, `sh4_execute_swi`, etc.) | Declared, not implemented |
-| Conditional branches | `arm_conditional_block_header()` and `thumb_conditional_branch` are placeholders |
-| Block memory (LDM/STM) | Macro only does a single u32 access |
-| Idle-loop elimination | Present in MIPS/x86 emitters, missing from SH-4 |
-| Block prologue | Empty — no register setup before translated blocks |
+| Load/store helpers | In `dc/sh4_helpers.c` and `dc/sh4_stub.c` (SMC-aware stores) |
+| CPSR/SPSR/SWI | In `dc/sh4_helpers.c` |
+| Conditional branches + idle loops | In `dc/sh4_emit.h` |
+| Block memory (dynarec) | Full macros via `dc/sh4_instr.inc` (x86 port) |
+| `generate_update_pc_reg` | Passes `pc`, reloads cycle counter from `sh4_update_gba` return |
 
-**Impact:** Without dynarec, games with idle loops (most entries in `game_config.txt`) burn CPU spinning. PSP gets idle-loop elimination via dynarec; Dreamcast does not.
+**Audit polish (Phase 1):**
 
-**Path forward:**
+- Extended `SH4_EMIT_LOAD/STORE_REG` for `reg[16+]` (flags, CPSR) via indexed addressing
+- Fixed conditional branch patch (`generate_branch_patch_conditional`) and relative offset (`+4` delay slot)
+- `sh4_update_gba` tail-jumps on IRQ/PC change; emitted code reloads `r13` from return value
+- `execute_store_*` takes instruction PC (third arg) instead of corrupting `REG_PC` with the address
+- Added `get_shift_imm` / `generate_shift_reg`; Thumb hi-reg PC branches move target into `r4`
+- `SH4_EMIT_CMP_REG` uses `cmp/str` (sets T flag); `swi_hle_div` remainder fix
+- Host test: `tests/phase1_helpers_test.c`
 
-1. Finish `sh4_stub.c` (loads, CPSR, SWI, aligned access).
-2. Port conditional-branch and idle-loop macros from `psp/mips_emit.h`.
-3. Re-enable `execute_arm_translate()` once blocks execute correctly.
+**Remaining risks:** hardware validation on real Dreamcast/KOS toolchain; dynarec edge cases may still need game-specific testing.
 
 ---
 
 ## Phase 2 — CPU core LDM/STM fixes (P2)
 
-**Status:** Not started
+**Status:** Complete
 
-Marked as important in `cpu.c`:
+Fixed ARM `LDM`/`STM` in the interpreter (`cpu.c`):
 
-```
-// Important todo:
-// - stm reglist writeback when base is in the list needs adjustment
-// - block memory needs psr swapping and user mode reg swapping
-```
+1. **Writeback timing** — base register writeback now runs *after* the transfer loop, so `STM` with the base in the register list stores the original value before applying the final address.
+2. **Load writeback** — when the base is in the list, the loaded value is kept (writeback skipped), matching ARM7TDMI behavior.
+3. **User bank (`^` suffix)** — `LDM`/`STM` with the `s_bit` flag now access `reg_mode[MODE_USER][8–14]` for R8–R14 when in a privileged CPU mode.
 
-Affects games using complex `LDM`/`STM` in user mode or with writeback edge cases. Worth fixing in the interpreter even before dynarec is complete.
+Affects games using privileged-mode register bank switching or `STM`/`LDM` with writeback when the base register is included in the transfer list.
 
 ---
 
 ## Phase 3 — Memory limits on Dreamcast (P3)
 
-**Status:** Not started
+**Status:** Complete
 
-Dreamcast is capped at **8 MB** ROM buffer with **8 KB** pages vs **32 MB / 32 KB** on other platforms (`memory.c`).
+Unified gamepak swap paging in `memory.c`:
 
-**Impact:** Blocks larger ROMs; increases swap churn for mid-size games.
+- **32 KB pages everywhere** — `GAMEPAK_SWAP_PAGE_SIZE` used for buffer page count, `load_gamepak_page()`, and `evict_gamepak_page()` (fixes prior 8 KB / 32 KB mismatch on Dreamcast).
+- **Dreamcast ROM buffer** — tries **16 MB**, then **12 / 8 / 4 MB** on `malloc` failure (was a fixed 8 MB with wrong page math).
+- **Graceful failure** — `init_gamepak_buffer()` returns early if allocation fails instead of dereferencing NULL.
+
+**Impact:** Larger ROMs can stay resident longer on DC; swapped ROM paging is consistent across platforms.
 
 ---
 
@@ -95,8 +89,8 @@ Dreamcast is capped at **8 MB** ROM buffer with **8 KB** pages vs **32 MB / 32 K
 |-------|-----|--------|--------|
 | **0** | Restore `blit_to_screen` | Small | Fixes visible menu/savestate UI |
 | **1** | Complete SH-4 dynarec stub + emit | Large | Full-speed play; idle-loop games |
-| **2** | LDM/STM interpreter fixes | Medium | Compatibility for edge-case games |
-| **3** | ROM buffer / paging strategy | Medium | Large ROM support |
+| **2** | LDM/STM interpreter fixes | Medium | Compatibility for edge-case games ✓ |
+| **3** | ROM buffer / paging strategy | Medium | Large ROM support ✓ |
 | **4** | Remove debug prints | Trivial | Polish |
 
 ```mermaid

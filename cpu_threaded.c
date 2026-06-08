@@ -17,10 +17,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-// Not-so-important todo:
-// - stm reglist writeback when base is in the list needs adjustment
-// - block memory needs psr swapping and user mode reg swapping
-
 #include <stdio.h>
 #include "common.h"
 

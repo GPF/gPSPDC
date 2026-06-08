@@ -17,10 +17,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-// Important todo:
-// - stm reglist writeback when base is in the list needs adjustment
-// - block memory needs psr swapping and user mode reg swapping
-
 #include <stdio.h>
 #include "common.h"
 
@@ -924,19 +920,41 @@ const u32 psr_masks[16] =
 #define sprint_yes(access_type, pre_op, post_op, wb)                          \
   printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb)       \
 
-#define arm_block_writeback_load()                                            \
-  if(!((reg_list >> rn) & 0x01))                                              \
+#define arm_block_memory_user_bank_yes(reg_num)                               \
+  (((reg_num) >= 8) && ((reg_num) <= 14) && (reg[CPU_MODE] != MODE_USER))     \
+
+#define arm_block_memory_user_bank_no(reg_num)                                \
+  0                                                                           \
+
+#define arm_block_memory_user_bank(reg_num, s_bit)                            \
+  arm_block_memory_user_bank_##s_bit(reg_num)                                 \
+
+#define arm_block_memory_apply_writeback_load_no()                            \
+
+#define arm_block_memory_apply_writeback_store_no()                           \
+
+#define arm_block_memory_apply_writeback_load_down()                          \
+  do                                                                          \
   {                                                                           \
-    reg[rn] = address;                                                        \
-  }                                                                           \
+    if(!((reg_list >> rn) & 0x01))                                            \
+      reg[rn] = base - (word_bit_count(reg_list) * 4);                        \
+  } while(0)                                                                  \
 
-#define arm_block_writeback_store()                                           \
-  reg[rn] = address                                                           \
+#define arm_block_memory_apply_writeback_load_up()                            \
+  do                                                                          \
+  {                                                                           \
+    if(!((reg_list >> rn) & 0x01))                                            \
+      reg[rn] = base + (word_bit_count(reg_list) * 4);                        \
+  } while(0)                                                                  \
 
-#define arm_block_writeback_yes(access_type)                                  \
-  arm_block_writeback_##access_type()                                         \
+#define arm_block_memory_apply_writeback_store_down()                         \
+  reg[rn] = base - (word_bit_count(reg_list) * 4)                             \
 
-#define arm_block_writeback_no(access_type)                                   \
+#define arm_block_memory_apply_writeback_store_up()                           \
+  reg[rn] = base + (word_bit_count(reg_list) * 4)                             \
+
+#define arm_block_memory_apply_writeback(access_type, writeback_type)         \
+  arm_block_memory_apply_writeback_##access_type##_##writeback_type()         \
 
 #define load_block_memory(address, dest)                                      \
   dest = address32(address_region, (address + offset) & 0x7FFF)               \
@@ -956,14 +974,6 @@ const u32 psr_masks[16] =
 #define arm_block_memory_offset_up()                                          \
   (base + 4)                                                                  \
 
-#define arm_block_memory_writeback_down()                                     \
-  reg[rn] = base - (word_bit_count(reg_list) * 4)                             \
-
-#define arm_block_memory_writeback_up()                                       \
-  reg[rn] = base + (word_bit_count(reg_list) * 4)                             \
-
-#define arm_block_memory_writeback_no()                                       \
-
 #define arm_block_memory_load_pc()                                            \
   load_aligned32(address, pc);                                                \
   reg[REG_PC] = pc                                                            \
@@ -978,16 +988,19 @@ const u32 psr_masks[16] =
   u32 address = arm_block_memory_offset_##offset_type() & 0xFFFFFFFC;         \
   u32 i;                                                                      \
                                                                               \
-  arm_block_memory_writeback_##writeback_type();                              \
-                                                                              \
   for(i = 0; i < 15; i++)                                                     \
   {                                                                           \
     if((reg_list >> i) & 0x01)                                                \
     {                                                                         \
-      access_type##_aligned32(address, reg[i]);                               \
+      if(arm_block_memory_user_bank(i, s_bit))                                \
+        access_type##_aligned32(address, reg_mode[MODE_USER][i - 8]);         \
+      else                                                                    \
+        access_type##_aligned32(address, reg[i]);                             \
       address += 4;                                                           \
     }                                                                         \
   }                                                                           \
+                                                                              \
+  arm_block_memory_apply_writeback(access_type, writeback_type);              \
                                                                               \
   arm_pc_offset(4);                                                           \
   if(reg_list & 0x8000)                                                       \
