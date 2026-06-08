@@ -3,10 +3,12 @@ CFLAGS ?= -Wall -Wextra -std=c99
 
 .PHONY: test clean
 
-test: phase1_helpers_test sh4_emit_encoding_test sh4_integration_contract_test
+test: phase1_helpers_test sh4_emit_encoding_test sh4_integration_contract_test \
+	phase4_cheats_test
 	./phase1_helpers_test
 	./sh4_emit_encoding_test
 	./sh4_integration_contract_test
+	./phase4_cheats_test
 
 phase1_helpers_test: phase1_helpers_test.c
 	$(CC) $(CFLAGS) -o $@ $<
@@ -17,6 +19,9 @@ sh4_emit_encoding_test: sh4_emit_encoding_test.c
 sh4_integration_contract_test: sh4_integration_contract_test.c
 	$(CC) $(CFLAGS) -o $@ $<
 
+phase4_cheats_test: phase4_cheats_test.c
+	$(CC) $(CFLAGS) -o $@ $<
+
 clean:
 	rm -f phase1_helpers_test sh4_emit_encoding_test \
-		sh4_integration_contract_test
+		sh4_integration_contract_test phase4_cheats_test

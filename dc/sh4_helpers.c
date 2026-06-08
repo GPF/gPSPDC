@@ -245,8 +245,7 @@ void function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask)
   if(store_mask & 0xFF)
   {
     set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-    // TODO: check for interrupts, since this can change PC it has to be
-    // cased in ASM
+    check_for_interrupts();
   }
 }
 void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)

@@ -78,11 +78,15 @@ Unified gamepak swap paging in `memory.c`:
 
 ## Phase 4 — Release polish (P4)
 
-**Status:** Not started
+**Status:** Complete
 
-- Remove debug `printf` calls in `sh4_stub.c`, `memory.c`, and `main.c`.
-- Cheats: hook routines (opcode `0x0F`) and Gameshark v3 handling incomplete in `cheats.c`.
-- Video scaling path in `flip_screen()` is commented out; DC uses fixed 240×160 via SDL textured mode.
+- **Debug output** — startup and DMA trace `printf` calls in `main.c`, `memory.c`, and `video.c` now route through `gpsp_debug_printf()` (silent unless built with `-DGPSP_DEBUG`). User-facing errors (missing BIOS, failed ROM load) are unchanged.
+- **Cheats** — fixed Gameshark v3 I/O register opcode extraction (`(address >> 24) & 0x0F`); added ROM patch (opcode `0x6`), button-gated writes (`0x8`), hook/master address tracking (`0x0F` and `0x001DC0DE` lines). Cheats still run on vblank; dynarec PC hooks are recorded in `cheat_master_hook` for future use.
+- **CPSR store** — `execute_store_cpsr()` in `dc/sh4_helpers.c` now calls `check_for_interrupts()` after a mode change.
+- **Video scaling** — left at native 240×160 on Dreamcast (`video_scale = 1`); integer scaling in `flip_screen()` remains disabled because the DC SDL path uses textured mode at GBA resolution. Menu scaling options affect window placement, not framebuffer upscale.
+- **Host tests** — `tests/phase4_cheats_test.c` covers GS3 opcode extraction and master-hook address math.
+
+**Still unsupported:** Gameshark IF/conditional codes starting with `00000000`, dynarec-synchronized cheat hooks at `cheat_master_hook`.
 
 ---
 
@@ -94,7 +98,7 @@ Unified gamepak swap paging in `memory.c`:
 | **1** | Complete SH-4 dynarec stub + emit | Large | Full-speed play; idle-loop games |
 | **2** | LDM/STM interpreter fixes | Medium | Compatibility for edge-case games ✓ |
 | **3** | ROM buffer / paging strategy | Medium | Large ROM support ✓ |
-| **4** | Remove debug prints | Trivial | Polish |
+| **4** | Release polish | Small | Cleaner release build ✓ |
 
 ```mermaid
 flowchart TD
