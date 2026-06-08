@@ -22,6 +22,17 @@ typedef uint32_t u32;
 
 translation_ptr_t translation_ptr;
 
+static u32 last_invalidate_addr;
+static u32 last_invalidate_size;
+static u32 invalidate_count;
+
+void sh4_invalidate_icache_region(u32 addr, u32 size)
+{
+  last_invalidate_addr = addr;
+  last_invalidate_size = size;
+  invalidate_count++;
+}
+
 static u16 code_buffer[64];
 static int failures;
 
@@ -147,6 +158,39 @@ static void test_load_imm_encodings(void)
    sizeof(expected) / sizeof(expected[0]));
 }
 
+static void test_icache_range_hook(void)
+{
+  u8 cache[64];
+  u8 *cache_end = cache + 28;
+  u32 expected_addr = (u32)(uintptr_t)cache;
+  u32 expected_size = 28 + 0x100;
+
+  invalidate_count = 0;
+  last_invalidate_addr = 0;
+  last_invalidate_size = 0;
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+#endif
+  translate_invalidate_dcache_region(cache, cache_end);
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
+  if(invalidate_count != 1 || last_invalidate_addr != expected_addr ||
+   last_invalidate_size != expected_size)
+  {
+    printf("icache range hook failed: count=%u addr=%08x size=%u\n",
+     invalidate_count, last_invalidate_addr, last_invalidate_size);
+    failures++;
+  }
+  else
+  {
+    printf("icache range hook: ok\n");
+  }
+}
+
 int main(void)
 {
   test_load_store_encodings();
@@ -154,6 +198,7 @@ int main(void)
   test_shift_and_call_encodings();
   test_branch_filler_polarity();
   test_load_imm_encodings();
+  test_icache_range_hook();
 
   return failures == 0 ? 0 : 1;
 }

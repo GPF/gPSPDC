@@ -6,7 +6,6 @@
 
 typedef u16 *translation_ptr_t;
 extern translation_ptr_t translation_ptr;
-void translate_invalidate_dcache(void);
 void sh4_invalidate_icache_region(u32 addr, u32 size);
 
 typedef enum {
@@ -489,12 +488,10 @@ u32 function_cc execute_arm_translate(u32 cycles);
 
 #define generate_block_extra_vars_thumb() \
 
-#define translate_invalidate_dcache() \
+#define translate_invalidate_dcache_region(cache_start, cache_end) \
   do { \
-    extern u8 ram_translation_cache[]; \
-    extern u8 *ram_translation_ptr; \
-    icache_flush_range((u32)ram_translation_cache, \
-      (u32)(ram_translation_ptr - ram_translation_cache) + 0x100); \
+    sh4_invalidate_icache_region((u32)(cache_start), \
+     (u32)((u8 *)(cache_end) - (u8 *)(cache_start)) + 0x100); \
   } while(0)
 
 #define generate_load_reg_pc(ireg, reg_index, pc_offset) \

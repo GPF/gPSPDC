@@ -35,6 +35,23 @@ static inline void extract_flags_local(void)
   reg[REG_V_FLAG] = (reg[REG_CPSR] >> 28) & 1;
 }
 
+static inline void sh4_reload_cycles(u32 cycles)
+{
+  __asm__ __volatile__("mov.l %0, r13" : : "r" (cycles) : "r13", "memory");
+}
+
+static void sh4_lookup_pc(void)
+{
+  u32 pc = reg[REG_PC];
+
+  reg[CHANGED_PC_STATUS] = 0;
+
+  if(reg[REG_CPSR] & 0x20)
+    ((void (*)(void))block_lookup_address_thumb(pc))();
+  else
+    ((void (*)(void))block_lookup_address_arm(pc))();
+}
+
 u32 sh4_update_gba(u32 pc)
 {
   u32 cycles;
@@ -48,6 +65,7 @@ u32 sh4_update_gba(u32 pc)
   {
     new_pc = reg[REG_PC];
     reg[CHANGED_PC_STATUS] = 0;
+    sh4_reload_cycles(cycles);
 
     if(reg[REG_CPSR] & 0x20)
       ((void (*)(void))block_lookup_address_thumb(new_pc))();
@@ -78,6 +96,8 @@ void sh4_indirect_branch_dual(u32 address)
 
 void function_cc execute_store_u8(u32 address, u32 value, u32 pc)
 {
+  u32 cycles;
+
   reg[REG_PC] = pc;
 
   if(!(address & 0xF0000000))
@@ -93,7 +113,7 @@ void function_cc execute_store_u8(u32 address, u32 value, u32 pc)
       if(map[offset - 32768] != 0)
       {
         flush_translation_cache_ram();
-        goto lookup_pc;
+        sh4_lookup_pc();
       }
 
       return;
@@ -110,33 +130,28 @@ void function_cc execute_store_u8(u32 address, u32 value, u32 pc)
       if(result == CPU_ALERT_SMC)
       {
         flush_translation_cache_ram();
-        goto lookup_pc;
+        sh4_lookup_pc();
+        return;
       }
 
       do
       {
-        result = update_gba();
+        cycles = update_gba();
       }
       while(reg[CPU_HALT_STATE] != 0);
 
-      goto lookup_pc;
+      sh4_reload_cycles(cycles);
+      sh4_lookup_pc();
     }
   }
 
   return;
-
-lookup_pc:
-  reg[CHANGED_PC_STATUS] = 0;
-  address = reg[REG_PC];
-
-  if(reg[REG_CPSR] & 0x20)
-    ((void (*)(void))block_lookup_address_thumb(address))();
-  else
-    ((void (*)(void))block_lookup_address_arm(address))();
 }
 
 void function_cc execute_store_u16(u32 address, u32 value, u32 pc)
 {
+  u32 cycles;
+
   address &= ~0x1;
   reg[REG_PC] = pc;
 
@@ -153,7 +168,7 @@ void function_cc execute_store_u16(u32 address, u32 value, u32 pc)
       if(*(u16 *)(map + offset - 32768) != 0)
       {
         flush_translation_cache_ram();
-        goto lookup_pc;
+        sh4_lookup_pc();
       }
 
       return;
@@ -170,33 +185,28 @@ void function_cc execute_store_u16(u32 address, u32 value, u32 pc)
       if(result == CPU_ALERT_SMC)
       {
         flush_translation_cache_ram();
-        goto lookup_pc;
+        sh4_lookup_pc();
+        return;
       }
 
       do
       {
-        result = update_gba();
+        cycles = update_gba();
       }
       while(reg[CPU_HALT_STATE] != 0);
 
-      goto lookup_pc;
+      sh4_reload_cycles(cycles);
+      sh4_lookup_pc();
     }
   }
 
   return;
-
-lookup_pc:
-  reg[CHANGED_PC_STATUS] = 0;
-  address = reg[REG_PC];
-
-  if(reg[REG_CPSR] & 0x20)
-    ((void (*)(void))block_lookup_address_thumb(address))();
-  else
-    ((void (*)(void))block_lookup_address_arm(address))();
 }
 
 void function_cc execute_store_u32(u32 address, u32 value, u32 pc)
 {
+  u32 cycles;
+
   address &= ~0x3;
   reg[REG_PC] = pc;
 
@@ -213,7 +223,7 @@ void function_cc execute_store_u32(u32 address, u32 value, u32 pc)
       if(*(u32 *)(map + offset - 32768) != 0)
       {
         flush_translation_cache_ram();
-        goto lookup_pc;
+        sh4_lookup_pc();
       }
 
       return;
@@ -230,35 +240,22 @@ void function_cc execute_store_u32(u32 address, u32 value, u32 pc)
       if(result == CPU_ALERT_SMC)
       {
         flush_translation_cache_ram();
-        goto lookup_pc;
+        sh4_lookup_pc();
+        return;
       }
 
       do
       {
-        result = update_gba();
+        cycles = update_gba();
       }
       while(reg[CPU_HALT_STATE] != 0);
 
-      goto lookup_pc;
+      sh4_reload_cycles(cycles);
+      sh4_lookup_pc();
     }
   }
 
   return;
-
-lookup_pc:
-  reg[CHANGED_PC_STATUS] = 0;
-  address = reg[REG_PC];
-
-  if(reg[REG_CPSR] & 0x20)
-    ((void (*)(void))block_lookup_address_thumb(address))();
-  else
-    ((void (*)(void))block_lookup_address_arm(address))();
-}
-
-void translate_invalidate_dcache(void)
-{
-  icache_flush_range((u32)ram_translation_cache,
-   (u32)(ram_translation_ptr - ram_translation_cache) + 0x100);
 }
 
 void sh4_invalidate_icache_region(u32 addr, u32 size)

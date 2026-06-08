@@ -2721,7 +2721,8 @@ u32 bios_block_tag_top = 0x0101;
     }                                                                         \
                                                                               \
     if(translation_recursion_level == 0)                                      \
-      translate_invalidate_dcache();                                          \
+      translate_invalidate_dcache_region(mem_type##_translation_cache,        \
+       mem_type##_translation_ptr);                                           \
   }                                                                           \
   else                                                                        \
   {                                                                           \
@@ -2806,7 +2807,8 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
         }                                                                     \
                                                                               \
         if(translation_recursion_level == 0)                                  \
-          translate_invalidate_dcache();                                      \
+          translate_invalidate_dcache_region(rom_translation_cache,           \
+           rom_translation_ptr);                                              \
       }                                                                       \
       break;                                                                  \
     }                                                                         \

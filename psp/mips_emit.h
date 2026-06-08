@@ -643,7 +643,7 @@ u32 arm_to_mips_reg[] =
   mips_emit_nop();                                                            \
   generate_load_imm(reg_pc, stored_pc)                                        \
 
-#define translate_invalidate_dcache()                                         \
+#define translate_invalidate_dcache_region(cache_start, cache_end)            \
   sceKernelDcacheWritebackAll()                                               \
 
 #define block_prologue_size 8
