@@ -3431,10 +3431,11 @@ void init_video()
 
 #endif  
   if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) < 0) {
-                             printf("Can't init SDL\n");
+                             gpsp_debug_printf("Can't init SDL\n");
                              return;
                              }
-  printf("SDL initialized\nSet video mode to %dx%d\n",240 * video_scale, 160 * video_scale);
+  gpsp_debug_printf("SDL initialized\nSet video mode to %dx%d\n",
+   240 * video_scale, 160 * video_scale);
   screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
   SDL_ShowCursor(0);
 }

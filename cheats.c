@@ -21,6 +21,7 @@
 
 cheat_type cheats[MAX_CHEATS];
 u32 num_cheats;
+u32 cheat_master_hook = 0xffffffff;
 
 void decrypt_gsa_code(u32 *address_ptr, u32 *value_ptr, cheat_variant_enum
  cheat_variant)
@@ -173,6 +174,12 @@ void process_cheat_gs1(cheat_type *cheat)
 
     code_ptr += 2;
 
+    if(value == 0x001DC0DE)
+    {
+      cheat_master_hook = 0x08000000 | (address & 0x1FFFFFF);
+      continue;
+    }
+
     cheat_opcode = address >> 28;
     address &= 0xFFFFFFF;
 
@@ -210,13 +217,19 @@ void process_cheat_gs1(cheat_type *cheat)
         break;
       }
 
-      // ROM patch not supported yet
       case 0x6:
+        write_memory32(0x08000000 | (address & 0x1FFFFFF), value);
         break;
 
-      // GS button down not supported yet
       case 0x8:
+      {
+        u32 pad = (~io_registers[REG_P1]) & 0x3FF;
+        u32 button_mask = (value >> 16) & 0x3FF;
+
+        if(button_mask == 0 || (pad & button_mask) == button_mask)
+          write_memory32(address, value & 0xFFFF);
         break;
+      }
 
       // Reencryption (DEADFACE) not supported yet
       case 0xD:
@@ -236,14 +249,12 @@ void process_cheat_gs1(cheat_type *cheat)
         }
         break;
 
-      // Hook routine not supported yet (not important??)
       case 0x0F:
+        cheat_master_hook = 0x08000000 | (address & 0x1FFFFFF);
         break;
     }
   }
 }
-
-// These are especially incomplete.
 
 void process_cheat_gs3(cheat_type *cheat)
 {
@@ -259,13 +270,19 @@ void process_cheat_gs3(cheat_type *cheat)
 
     code_ptr += 2;
 
+    if(value == 0x001DC0DE)
+    {
+      cheat_master_hook = 0x08000000 | (address & 0x1FFFFFF);
+      continue;
+    }
+
     cheat_opcode = address >> 28;
     address &= 0xFFFFFFF;
 
     switch(cheat_opcode)
     {
       case 0x0:
-        cheat_opcode = address >> 24;
+        cheat_opcode = (address >> 24) & 0x0F;
         address = (address & 0xFFFFF) + ((address << 4) & 0xF000000);
 
         switch(cheat_opcode)
@@ -305,7 +322,7 @@ void process_cheat_gs3(cheat_type *cheat)
         break;
 
       case 0x4:
-        cheat_opcode = address >> 24;
+        cheat_opcode = (address >> 24) & 0x0F;
         address = (address & 0xFFFFF) + ((address << 4) & 0xF000000);
 
         switch(cheat_opcode)
@@ -329,7 +346,7 @@ void process_cheat_gs3(cheat_type *cheat)
         break;
 
       case 0x8:
-        cheat_opcode = address >> 24;
+        cheat_opcode = (address >> 24) & 0x0F;
         address = (address & 0xFFFFF) + ((address << 4) & 0xF000000);
 
         switch(cheat_opcode)
@@ -352,7 +369,7 @@ void process_cheat_gs3(cheat_type *cheat)
         break;
 
       case 0xC:
-        cheat_opcode = address >> 24;
+        cheat_opcode = (address >> 24) & 0x0F;
         address = (address & 0xFFFFFF) + 0x4000000;
 
         switch(cheat_opcode)

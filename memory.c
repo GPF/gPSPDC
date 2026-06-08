@@ -2140,7 +2140,6 @@ s32 load_gamepak_raw(char *name)
 {
 	char newname[100];
 	sprintf(newname,"/cd/gbaDC/%s",name);
-	fprintf(stderr,"loading %s\n",newname);
   file_open(gamepak_file, newname, read);
 
   if(file_check_valid(gamepak_file))
@@ -2302,7 +2301,7 @@ dma_region_type dma_region_map[16] =
 #define dma_adjust_ptr_reload()                                               \
 
 #define dma_print(src_op, dest_op, transfer_size, wb)                         \
-  printf("dma from %x (%s) to %x (%s) for %x (%s) (%s) (%d) (pc %x)\n",       \
+  gpsp_debug_printf("dma from %x (%s) to %x (%s) for %x (%s) (%s) (%d) (pc %x)\n", \
    src_ptr, #src_op, dest_ptr, #dest_op, length, #transfer_size, #wb,         \
    dma->irq, reg[15]);                                                        \
 

@@ -42,3 +42,4 @@ void add_cheats(u8 *cheats_filename);
 
 extern cheat_type cheats[MAX_CHEATS];
 extern u32 num_cheats;
+extern u32 cheat_master_hook;

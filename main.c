@@ -170,7 +170,7 @@ int main(int argc, char *argv[])
 #else
   //freopen("CON", "wb", stdout);
 #endif
-printf("init_gamepak_buffer...\n");
+  gpsp_debug_printf("init_gamepak_buffer...\n");
   init_gamepak_buffer();
 
   // Copy the directory path of the executable into main_path
@@ -179,11 +179,11 @@ printf("init_gamepak_buffer...\n");
 #else
   getcwd(main_path,512);
 #endif
-printf("load_config_file...\n");
+  gpsp_debug_printf("load_config_file...\n");
   load_config_file();
 
   gamepak_filename[0] = 0;
-printf("load_bios...\n");
+  gpsp_debug_printf("load_bios...\n");
   if(load_bios("/cd/gba_bios.bin") == -1)
   {
 #ifdef PSP_BUILD
@@ -217,17 +217,17 @@ quit();
 #ifdef PSP_BUILD
   delay_us(2500000);
 #endif
-printf("Initialize...\ninit_main\n");
+  gpsp_debug_printf("Initialize...\ninit_main\n");
   init_main();
-  printf("init_sound\n");
+  gpsp_debug_printf("init_sound\n");
   init_sound();
-printf("init_video\n");
+  gpsp_debug_printf("init_video\n");
   init_video();
-printf("init_input\n");
+  gpsp_debug_printf("init_input\n");
   init_input();
-printf("video_resolution_large\n");
+  gpsp_debug_printf("video_resolution_large\n");
   video_resolution_large();
-printf("Loading files...\n");
+  gpsp_debug_printf("Loading files...\n");
   if(argc > 1)
   {
     if(load_gamepak(argv[1]) == -1)
@@ -247,7 +247,7 @@ printf("Loading files...\n");
 
     if(load_file(file_ext, load_filename) == -1)
     {
-      printf("Loading menu...\n");
+      gpsp_debug_printf("Loading menu...\n");
       menu(copy_screen());
     }
     else

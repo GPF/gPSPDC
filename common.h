@@ -170,6 +170,12 @@ typedef u32 fixed16_16;
 #define address32(base, offset)                                               \
   *((u32 *)((u8 *)base + (offset)))                                           \
 
+#ifdef GPSP_DEBUG
+#define gpsp_debug_printf(...) printf(__VA_ARGS__)
+#else
+#define gpsp_debug_printf(...) ((void)0)
+#endif
+
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
