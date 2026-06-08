@@ -190,7 +190,7 @@ static void test_dynarec_cheat_hook_contract(void)
   if(threaded != NULL)
   {
     expect_contains("cheat hook pc check", threaded,
-     "if(pc == cheat_master_hook)");
+     "if(cheat_pc_is_hook(pc))");
     expect_contains("cheat hook emission", threaded,
      "type##_process_cheats();");
     free(threaded);

@@ -81,12 +81,10 @@ Unified gamepak swap paging in `memory.c`:
 **Status:** Complete
 
 - **Debug output** — startup and DMA trace `printf` calls in `main.c`, `memory.c`, and `video.c` now route through `gpsp_debug_printf()` (silent unless built with `-DGPSP_DEBUG`). User-facing errors (missing BIOS, failed ROM load) are unchanged.
-- **Cheats** — fixed Gameshark v3 I/O register opcode extraction (`(address >> 24) & 0x0F`); added ROM patch (opcode `0x6`), button-gated writes (`0x8`), hook/master address tracking (`0x0F` and `0x001DC0DE` lines). Gameshark v1 IF codes (`0xD`/`0xE`) and PAR v3 conditionals are supported via an Action Replay engine adapted from [SkyEmu](https://github.com/skylersaleh/SkyEmu) (MIT): nested IF/ELSE/ENDIF stacks, ROM patches, fill codes, and button-gated multi-line writes. Dynarec emits `process_cheats()` at `cheat_master_hook` and flushes translation caches when the hook address changes. See `THIRD_PARTY_NOTICES.md`.
+- **Cheats** — fixed Gameshark v3 I/O register opcode extraction (`(address >> 24) & 0x0F`); added ROM patch (opcode `0x6`), button-gated writes (`0x8`), hook/master address tracking (`0x0F` and `0x001DC0DE` lines). Gameshark v1 IF codes (`0xD`/`0xE`) and PAR v3 conditionals are supported via an Action Replay engine adapted from [SkyEmu](https://github.com/skylersaleh/SkyEmu) (MIT): nested IF/ELSE/ENDIF stacks, ROM patches, fill codes, and button-gated multi-line writes. PAR v3 slowdown (`00000000 0800xx00`) re-runs the cheat list `xx` times per cycle. `DEADFACE` re-encryption lines reseed decryption during cheat load (mGBA algorithm/tables, MPL 2.0). Up to eight master hooks are tracked; dynarec emits `process_cheats()` at any hook PC via `cheat_pc_is_hook()` and flushes translation caches when hooks change. See `THIRD_PARTY_NOTICES.md`.
 - **CPSR store** — `execute_store_cpsr()` in `dc/sh4_helpers.c` returns the IRQ vector when enabling interrupts unmasks a pending IRQ; dynarec emission branches via `arm_psr_store_cpsr_post()`. `execute_spsr_restore()` uses the same `sh4_take_pending_irq()` helper so MOVS PC returns through the vector instead of leaving IRQ state half-applied.
 - **Video scaling** — left at native 240×160 on Dreamcast (`video_scale = 1`); integer scaling in `flip_screen()` remains disabled because the DC SDL path uses textured mode at GBA resolution. Menu scaling options affect window placement, not framebuffer upscale.
 - **Host tests** — `tests/phase4_cheats_test.c` covers GS3 opcode extraction and master-hook address math.
-
-**Still unsupported:** PAR v3 slowdown codes (no-op), Gameshark `DEADFACE` re-encryption, and multi-hook cheat lists beyond the first master hook.
 
 ---
 
