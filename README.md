@@ -107,7 +107,7 @@ gameshark_v3 Infinite Health
 995fa0d9 0c6720d2
 ```
 
-Enable cheats from the in-game **Cheats/Misc** menu. Gameshark v1/v3 write codes, ROM patches, button-gated codes, and master-hook addresses are supported; IF/conditional codes are not. Bad codes may still crash a game.
+Enable cheats from the in-game **Cheats/Misc** menu. Gameshark v1/v3 write codes, ROM patches, button-gated codes, master-hook addresses, IF/conditional codes, and PAR v3 conditionals are supported. Bad codes may still crash a game.
 
 ## Savestates
 

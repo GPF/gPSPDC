@@ -2357,4 +2357,7 @@ u8 swi_hle_handle[256] =
   generate_load_imm(reg_a0, pc);                                              \
   generate_function_call(step_debug_mips)                                     \
 
+#define arm_process_cheats()
+#define thumb_process_cheats()
+
 #endif

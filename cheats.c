@@ -18,10 +18,153 @@
  */
 
 #include "common.h"
+#include "cpu.h"
 
 cheat_type cheats[MAX_CHEATS];
 u32 num_cheats;
 u32 cheat_master_hook = 0xffffffff;
+
+#define PAR3_COND_MASK        0x38000000
+#define PAR3_WIDTH_MASK       0x06000000
+#define PAR3_ACTION_MASK      0xC0000000
+#define PAR3_COND_EQ          0x08000000
+#define PAR3_COND_NE          0x10000000
+#define PAR3_COND_LT          0x18000000
+#define PAR3_COND_GT          0x20000000
+#define PAR3_COND_ULT         0x28000000
+#define PAR3_COND_UGT         0x30000000
+#define PAR3_COND_AND         0x38000000
+#define PAR3_ACTION_NEXT      0x00000000
+#define PAR3_ACTION_NEXT_TWO  0x40000000
+#define PAR3_ACTION_BLOCK     0x80000000
+#define PAR3_OTHER_ENDIF      0x40000000
+#define PAR3_OTHER_ELSE       0x60000000
+
+typedef enum
+{
+  PAR3_FLOW_NORMAL = 0,
+  PAR3_FLOW_SKIP_TO_ELSE,
+  PAR3_FLOW_SKIP_TO_ENDIF
+} par3_flow_type;
+
+static void cheat_set_master_hook(u32 pcaddr)
+{
+  if(cheat_master_hook != pcaddr)
+  {
+    cheat_master_hook = pcaddr;
+    flush_translation_cache_rom();
+    flush_translation_cache_ram();
+    flush_translation_cache_bios();
+  }
+}
+
+static u32 par3_addr(u32 op1)
+{
+  return (op1 & 0xFFFFF) + ((op1 << 4) & 0x0F000000);
+}
+
+static u32 par3_width(u32 op1)
+{
+  return 1 << ((op1 & PAR3_WIDTH_MASK) >> 25);
+}
+
+static u32 par3_read(u32 address, u32 width)
+{
+  switch(width)
+  {
+    case 1:
+      return read_memory8(address);
+
+    case 2:
+      return read_memory16(address);
+
+    default:
+      return read_memory32(address);
+  }
+}
+
+static u32 par3_condition_pass(u32 cond, u32 memval, u32 operand, u32 width)
+{
+  switch(cond)
+  {
+    case PAR3_COND_EQ:
+      return memval == operand;
+
+    case PAR3_COND_NE:
+      return memval != operand;
+
+    case PAR3_COND_LT:
+      if(width == 1)
+        return (s8)memval < (s8)operand;
+      if(width == 2)
+        return (s16)memval < (s16)operand;
+      return (s32)memval < (s32)operand;
+
+    case PAR3_COND_GT:
+      if(width == 1)
+        return (s8)memval > (s8)operand;
+      if(width == 2)
+        return (s16)memval > (s16)operand;
+      return (s32)memval > (s32)operand;
+
+    case PAR3_COND_ULT:
+      return memval < operand;
+
+    case PAR3_COND_UGT:
+      return memval > operand;
+
+    case PAR3_COND_AND:
+      return (memval & operand) != 0;
+
+    default:
+      return 0;
+  }
+}
+
+static u32 gs1_if_pass(u32 cond, u32 memval, u32 operand)
+{
+  switch(cond)
+  {
+    case 0:
+      return memval == operand;
+
+    case 1:
+      return memval != operand;
+
+    case 2:
+      return (s16)memval <= (s16)operand;
+
+    case 3:
+      return (s16)memval >= (s16)operand;
+
+    default:
+      return 0;
+  }
+}
+
+static u32 par3_handle_special(u32 value, par3_flow_type *flow)
+{
+  switch(value & 0xFE000000)
+  {
+    case PAR3_OTHER_ENDIF:
+      *flow = PAR3_FLOW_NORMAL;
+      return 1;
+
+    case PAR3_OTHER_ELSE:
+      if(*flow == PAR3_FLOW_SKIP_TO_ELSE)
+        *flow = PAR3_FLOW_NORMAL;
+      else
+      if(*flow == PAR3_FLOW_NORMAL)
+        *flow = PAR3_FLOW_SKIP_TO_ENDIF;
+      return 1;
+
+    case 0x00000000:
+      return 2;
+
+    default:
+      return 0;
+  }
+}
 
 void decrypt_gsa_code(u32 *address_ptr, u32 *value_ptr, cheat_variant_enum
  cheat_variant)
@@ -71,6 +214,7 @@ void add_cheats(u8 *cheats_filename)
   cheat_variant_enum current_cheat_variant;
 
   num_cheats = 0;
+  cheat_master_hook = 0xffffffff;
   #ifdef _arch_dreamcast
   // add /cd/gbaDC/ to the cheats_filename path
   u8 cheats_filename2[512];
@@ -176,7 +320,7 @@ void process_cheat_gs1(cheat_type *cheat)
 
     if(value == 0x001DC0DE)
     {
-      cheat_master_hook = 0x08000000 | (address & 0x1FFFFFF);
+      cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFF));
       continue;
     }
 
@@ -231,9 +375,12 @@ void process_cheat_gs1(cheat_type *cheat)
         break;
       }
 
-      // Reencryption (DEADFACE) not supported yet
       case 0xD:
-        if(read_memory16(address) != (value & 0xFFFF))
+        if(address == 0xDEADFACE)
+          break;
+
+        if(!gs1_if_pass((value >> 20) & 0x0F, read_memory16(address),
+         value & 0xFFFF))
         {
           code_ptr += 2;
           i++;
@@ -241,16 +388,21 @@ void process_cheat_gs1(cheat_type *cheat)
         break;
 
       case 0xE:
-        if(read_memory16(value & 0xFFFFFFF) != (address & 0xFFFF))
+      {
+        u32 check_addr = value & 0x0FFFFFFF;
+        u32 operand = address & 0xFFFF;
+        u32 skip = (address >> 16) & 0xFF;
+
+        if(read_memory16(check_addr) != operand)
         {
-          u32 skip = ((address >> 16) & 0x03);
           code_ptr += skip * 2;
           i += skip;
         }
         break;
+      }
 
       case 0x0F:
-        cheat_master_hook = 0x08000000 | (address & 0x1FFFFFF);
+        cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFF));
         break;
     }
   }
@@ -262,6 +414,8 @@ void process_cheat_gs3(cheat_type *cheat)
   u32 *code_ptr = cheat->cheat_codes;
   u32 address, value;
   u32 i;
+  par3_flow_type flow = PAR3_FLOW_NORMAL;
+  u32 skip_lines = 0;
 
   for(i = 0; i < cheat->num_cheat_lines; i++)
   {
@@ -272,7 +426,70 @@ void process_cheat_gs3(cheat_type *cheat)
 
     if(value == 0x001DC0DE)
     {
-      cheat_master_hook = 0x08000000 | (address & 0x1FFFFFF);
+      cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFF));
+      continue;
+    }
+
+    if(address == 0x00000000)
+    {
+      u32 special = par3_handle_special(value, &flow);
+
+      if(special == 2)
+        break;
+
+      if(special != 0)
+        continue;
+    }
+
+    if(flow == PAR3_FLOW_SKIP_TO_ELSE || flow == PAR3_FLOW_SKIP_TO_ENDIF)
+    {
+      if(address == 0x00000000)
+        par3_handle_special(value, &flow);
+
+      continue;
+    }
+
+    if(skip_lines > 0)
+    {
+      skip_lines--;
+      continue;
+    }
+
+    if((address & PAR3_COND_MASK) != 0)
+    {
+      u32 width = par3_width(address);
+      u32 memval = par3_read(par3_addr(address), width);
+      u32 operand = value & ((width == 4) ? 0xFFFFFFFF :
+       ((width == 2) ? 0xFFFF : 0xFF));
+      u32 pass = par3_condition_pass(address & PAR3_COND_MASK, memval,
+       operand, width);
+
+      switch(address & PAR3_ACTION_MASK)
+      {
+        case PAR3_ACTION_NEXT:
+          if(!pass)
+            skip_lines = 1;
+          break;
+
+        case PAR3_ACTION_NEXT_TWO:
+          if(!pass)
+            skip_lines = 2;
+          break;
+
+        case PAR3_ACTION_BLOCK:
+          if(pass)
+            flow = PAR3_FLOW_NORMAL;
+          else
+            flow = PAR3_FLOW_SKIP_TO_ELSE;
+          break;
+      }
+
+      continue;
+    }
+
+    if((address & 0xFF000000) == 0xC4000000)
+    {
+      cheat_set_master_hook(0x08000000 | (address & 0x1FFFFFE));
       continue;
     }
 

@@ -81,12 +81,12 @@ Unified gamepak swap paging in `memory.c`:
 **Status:** Complete
 
 - **Debug output** — startup and DMA trace `printf` calls in `main.c`, `memory.c`, and `video.c` now route through `gpsp_debug_printf()` (silent unless built with `-DGPSP_DEBUG`). User-facing errors (missing BIOS, failed ROM load) are unchanged.
-- **Cheats** — fixed Gameshark v3 I/O register opcode extraction (`(address >> 24) & 0x0F`); added ROM patch (opcode `0x6`), button-gated writes (`0x8`), hook/master address tracking (`0x0F` and `0x001DC0DE` lines). Cheats still run on vblank; dynarec PC hooks are recorded in `cheat_master_hook` for future use.
-- **CPSR store** — `execute_store_cpsr()` in `dc/sh4_helpers.c` now calls `check_for_interrupts()` after a mode change.
+- **Cheats** — fixed Gameshark v3 I/O register opcode extraction (`(address >> 24) & 0x0F`); added ROM patch (opcode `0x6`), button-gated writes (`0x8`), hook/master address tracking (`0x0F` and `0x001DC0DE` lines). Gameshark v1 IF codes (`0xD`/`0xE`) and PAR v3 conditionals (`00000000` control lines plus `0x08–0x38` condition prefixes) are supported. Dynarec emits `process_cheats()` at `cheat_master_hook` and flushes translation caches when the hook address changes.
+- **CPSR store** — `execute_store_cpsr()` in `dc/sh4_helpers.c` returns the IRQ vector when enabling interrupts unmasks a pending IRQ; dynarec emission branches via `arm_psr_store_cpsr_post()`. `execute_spsr_restore()` uses the same `sh4_take_pending_irq()` helper so MOVS PC returns through the vector instead of leaving IRQ state half-applied.
 - **Video scaling** — left at native 240×160 on Dreamcast (`video_scale = 1`); integer scaling in `flip_screen()` remains disabled because the DC SDL path uses textured mode at GBA resolution. Menu scaling options affect window placement, not framebuffer upscale.
 - **Host tests** — `tests/phase4_cheats_test.c` covers GS3 opcode extraction and master-hook address math.
 
-**Still unsupported:** Gameshark IF/conditional codes starting with `00000000`, dynarec-synchronized cheat hooks at `cheat_master_hook`.
+**Still unsupported:** PAR v3 slowdown/fill/patch sequences on `00000000` special lines, Gameshark re-encryption (`DEADFACE`), and multi-hook cheat lists beyond the first master hook.
 
 ---
 

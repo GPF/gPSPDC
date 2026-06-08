@@ -279,7 +279,14 @@ void sh4_indirect_branch_arm(u32 address);
 void sh4_indirect_branch_thumb(u32 address);
 void sh4_indirect_branch_dual(u32 address);
 void sh4_step_debug(u32 pc);
+void sh4_cheat_hook(void);
 u32 function_cc execute_arm_translate(u32 cycles);
+
+#define arm_process_cheats() \
+  generate_function_call(sh4_cheat_hook)
+
+#define thumb_process_cheats() \
+  generate_function_call(sh4_cheat_hook)
 
 #define generate_load_reg(ireg, reg_index) \
   SH4_EMIT_LOAD_REG(SH4_IREG(ireg), reg_index)

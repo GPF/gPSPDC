@@ -46,6 +46,42 @@ static int test_master_hook_address(void)
   return 0;
 }
 
+static int test_gs1_if_conditions(void)
+{
+  uint32_t value_eq = 0x00000042u;
+  uint32_t value_ne = 0x00100042u;
+  uint32_t value_le = 0x00200042u;
+  uint32_t value_ge = 0x00300042u;
+
+  if(((value_eq >> 20) & 0x0Fu) != 0u ||
+   ((value_ne >> 20) & 0x0Fu) != 1u ||
+   ((value_le >> 20) & 0x0Fu) != 2u ||
+   ((value_ge >> 20) & 0x0Fu) != 3u)
+  {
+    printf("GS1 IF condition decode failed\n");
+    return 1;
+  }
+
+  printf("GS1 IF condition decode: ok\n");
+  return 0;
+}
+
+static int test_par3_condition_decode(void)
+{
+  uint32_t op1 = 0x08034567u;
+  uint32_t width = 1u << ((op1 & 0x06000000u) >> 25);
+  uint32_t addr = (op1 & 0x000FFFFFu) + ((op1 << 4) & 0x0F000000u);
+
+  if((op1 & 0x38000000u) != 0x08000000u || width != 1u || addr != 0x0034567u)
+  {
+    printf("PAR3 condition decode failed: width=%u addr=%08x\n", width, addr);
+    return 1;
+  }
+
+  printf("PAR3 condition decode: ok\n");
+  return 0;
+}
+
 static int test_gs1_hook_opcode(void)
 {
   uint32_t address = 0xF1234567u;
@@ -67,6 +103,8 @@ int main(void)
 
   failed |= test_gs3_inner_opcode();
   failed |= test_master_hook_address();
+  failed |= test_gs1_if_conditions();
+  failed |= test_par3_condition_decode();
   failed |= test_gs1_hook_opcode();
 
   return failed ? 1 : 0;

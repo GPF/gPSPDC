@@ -120,6 +120,81 @@ static void test_sh4_stub_async_exit_contract(void)
     printf("SH-4 async exit contract: ok\n");
 }
 
+static void test_sh4_helpers_irq_contract(void)
+{
+  char *text = read_text_file("../dc/sh4_helpers.c");
+  int failures_before = failures;
+
+  if(text == NULL)
+    return;
+
+  expect_contains("irq helper", text, "static u32 sh4_take_pending_irq(u32 return_pc)");
+  expect_contains("store cpsr return type", text,
+   "u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc)");
+  expect_contains("spsr restore irq redirect", text,
+   "irq_pc = sh4_take_pending_irq(address);");
+  expect_count("old broken check_for_interrupts macro", text,
+   "#define check_for_interrupts()", 0);
+
+  free(text);
+  if(failures == failures_before)
+    printf("SH-4 helpers irq contract: ok\n");
+}
+
+static void test_sh4_psr_store_contract(void)
+{
+  char *text = read_text_file("../dc/sh4_instr.inc");
+  int failures_before = failures;
+
+  if(text == NULL)
+    return;
+
+  expect_contains("cpsr store finish", text, "#define arm_psr_store_finish(cpsr)");
+  expect_contains("cpsr irq branch postamble", text,
+   "#define arm_psr_store_cpsr_post()");
+  expect_contains("cpsr store pc arg", text, "generate_load_pc(a2, pc);");
+  expect_contains("cpsr irq indirect branch", text,
+   "generate_indirect_branch_arm();");
+
+  free(text);
+  if(failures == failures_before)
+    printf("SH-4 psr store irq contract: ok\n");
+}
+
+static void test_dynarec_cheat_hook_contract(void)
+{
+  char *threaded = read_text_file("../cpu_threaded.c");
+  char *sh4_stub = read_text_file("../dc/sh4_stub.c");
+  char *sh4_emit = read_text_file("../dc/sh4_emit.h");
+  int failures_before = failures;
+
+  if(threaded != NULL)
+  {
+    expect_contains("cheat hook pc check", threaded,
+     "if(pc == cheat_master_hook)");
+    expect_contains("cheat hook emission", threaded,
+     "type##_process_cheats();");
+    free(threaded);
+  }
+
+  if(sh4_stub != NULL)
+  {
+    expect_contains("sh4 cheat hook helper", sh4_stub, "void sh4_cheat_hook(void)");
+    expect_contains("sh4 cheat hook call", sh4_stub, "process_cheats();");
+    free(sh4_stub);
+  }
+
+  if(sh4_emit != NULL)
+  {
+    expect_contains("arm cheat process macro", sh4_emit,
+     "#define arm_process_cheats()");
+    free(sh4_emit);
+  }
+
+  if(failures == failures_before)
+    printf("dynarec cheat hook contract: ok\n");
+}
+
 static void test_translation_cache_invalidation_contract(void)
 {
   char *text = read_text_file("../cpu_threaded.c");
@@ -143,6 +218,9 @@ static void test_translation_cache_invalidation_contract(void)
 int main(void)
 {
   test_sh4_stub_async_exit_contract();
+  test_sh4_helpers_irq_contract();
+  test_sh4_psr_store_contract();
+  test_dynarec_cheat_hook_contract();
   test_translation_cache_invalidation_contract();
 
   return failures == 0 ? 0 : 1;
