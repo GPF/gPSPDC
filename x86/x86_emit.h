@@ -494,7 +494,7 @@ typedef enum
 #define generate_block_extra_vars_thumb()                                     \
 
 
-#define translate_invalidate_dcache()                                         \
+#define translate_invalidate_dcache_region(cache_start, cache_end)            \
 
 #define block_prologue_size 0
 

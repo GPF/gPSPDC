@@ -6,7 +6,6 @@
 
 typedef u16 *translation_ptr_t;
 extern translation_ptr_t translation_ptr;
-void translate_invalidate_dcache(void);
 void sh4_invalidate_icache_region(u32 addr, u32 size);
 
 typedef enum {
@@ -50,28 +49,75 @@ typedef enum {
   SH4_EMIT_BYTE(0xE000 | ((rd & 0xF) << 8) | ((imm) & 0xFF))
 
 #define SH4_EMIT_ADD(rd, rn, rm) \
-  SH4_EMIT_BYTE(0x300C | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | ((rm) & 0xF))
+  do { \
+    if((rd) == (rn)) { \
+      SH4_EMIT_BYTE(0x300C | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } else if((rd) == (rm)) { \
+      SH4_EMIT_BYTE(0x300C | (((rd) & 0xF) << 8) | (((rn) & 0xF) << 4)); \
+    } else { \
+      SH4_EMIT_MOV((rd), (rn)); \
+      SH4_EMIT_BYTE(0x300C | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } \
+  } while(0)
 
 #define SH4_EMIT_SUB(rd, rn, rm) \
-  SH4_EMIT_BYTE(0x3008 | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | ((rm) & 0xF))
+  do { \
+    if((rd) == (rn)) { \
+      SH4_EMIT_BYTE(0x3008 | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } else if((rd) == (rm)) { \
+      SH4_EMIT_NOT((rd), (rd)); \
+      SH4_EMIT_ADD((rd), (rn), (rd)); \
+      SH4_EMIT_ADDI8((rd), 1); \
+    } else { \
+      SH4_EMIT_MOV((rd), (rn)); \
+      SH4_EMIT_BYTE(0x3008 | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } \
+  } while(0)
 
 #define SH4_EMIT_OR(rd, rn, rm) \
-  SH4_EMIT_BYTE(0x300B | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | ((rm) & 0xF))
+  do { \
+    if((rd) == (rn)) { \
+      SH4_EMIT_BYTE(0x200B | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } else if((rd) == (rm)) { \
+      SH4_EMIT_BYTE(0x200B | (((rd) & 0xF) << 8) | (((rn) & 0xF) << 4)); \
+    } else { \
+      SH4_EMIT_MOV((rd), (rn)); \
+      SH4_EMIT_BYTE(0x200B | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } \
+  } while(0)
 
 #define SH4_EMIT_AND(rd, rn, rm) \
-  SH4_EMIT_BYTE(0x2009 | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | ((rm) & 0xF))
+  do { \
+    if((rd) == (rn)) { \
+      SH4_EMIT_BYTE(0x2009 | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } else if((rd) == (rm)) { \
+      SH4_EMIT_BYTE(0x2009 | (((rd) & 0xF) << 8) | (((rn) & 0xF) << 4)); \
+    } else { \
+      SH4_EMIT_MOV((rd), (rn)); \
+      SH4_EMIT_BYTE(0x2009 | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } \
+  } while(0)
 
 #define SH4_EMIT_XOR(rd, rn, rm) \
-  SH4_EMIT_BYTE(0x200A | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | ((rm) & 0xF))
+  do { \
+    if((rd) == (rn)) { \
+      SH4_EMIT_BYTE(0x200A | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } else if((rd) == (rm)) { \
+      SH4_EMIT_BYTE(0x200A | (((rd) & 0xF) << 8) | (((rn) & 0xF) << 4)); \
+    } else { \
+      SH4_EMIT_MOV((rd), (rn)); \
+      SH4_EMIT_BYTE(0x200A | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4)); \
+    } \
+  } while(0)
 
 #define SH4_EMIT_NOT(rd, rm) \
   SH4_EMIT_BYTE(0x6007 | ((rd & 0xF) << 8) | ((rm & 0xF) << 4))
 
 #define SH4_EMIT_LW(rd, rn, offset) \
-  SH4_EMIT_BYTE(0x6006 | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | (((offset) >> 2) & 0xF))
+  SH4_EMIT_BYTE(0x5000 | (((rd) & 0xF) << 8) | (((rn) & 0xF) << 4) | (((offset) >> 2) & 0xF))
 
 #define SH4_EMIT_SW(rd, rn, offset) \
-  SH4_EMIT_BYTE(0x2006 | ((rd & 0xF) << 8) | ((rn & 0xF) << 4) | (((offset) >> 2) & 0xF))
+  SH4_EMIT_BYTE(0x1000 | (((rn) & 0xF) << 8) | (((rd) & 0xF) << 4) | (((offset) >> 2) & 0xF))
 
 #define SH4_EMIT_LOAD_MEM_W(rd, rn, byte_offset) \
   do { \
@@ -97,27 +143,43 @@ typedef enum {
     } \
   } while(0)
 
+#define SH4_EMIT_ADDI8(rn, imm) \
+  SH4_EMIT_BYTE(0x7000 | (((rn) & 0xF) << 8) | ((imm) & 0xFF))
+
 #define SH4_EMIT_ADDI(rd, rn, imm) \
   do { \
-    SH4_EMIT_BYTE(0x7000 | ((rn & 0xF) << 8) | ((imm) & 0xFF)); \
-    if((rd) != (rn)) SH4_EMIT_MOV(rd, rn); \
+    s32 _addi = (s32)(imm); \
+    if((rd) != (rn)) SH4_EMIT_MOV((rd), (rn)); \
+    if(_addi >= -128 && _addi <= 127) { \
+      SH4_EMIT_ADDI8((rd), _addi); \
+    } else { \
+      sh4_reg_number _tmp = ((rd) == sh4_reg_r1) ? sh4_reg_r2 : sh4_reg_r1; \
+      SH4_EMIT_LOAD_IMM(_tmp, _addi); \
+      SH4_EMIT_ADD((rd), (rd), _tmp); \
+    } \
   } while(0)
 
 #define SH4_EMIT_SHLL1(rd) \
-  SH4_EMIT_BYTE(0x0020 | ((rd & 0xF) << 8))
+  SH4_EMIT_BYTE(0x4000 | (((rd) & 0xF) << 8))
 
 #define SH4_EMIT_SHLR1(rd) \
-  SH4_EMIT_BYTE(0x0021 | ((rd & 0xF) << 8))
+  SH4_EMIT_BYTE(0x4001 | (((rd) & 0xF) << 8))
 
 #define SH4_EMIT_SHAR1(rd) \
-  SH4_EMIT_BYTE(0x4029 | ((rd & 0xF) << 8))
+  SH4_EMIT_BYTE(0x4021 | (((rd) & 0xF) << 8))
 
 #define SH4_EMIT_ROTR1(rd) \
-  SH4_EMIT_BYTE(0x402C | ((rd & 0xF) << 8))
+  SH4_EMIT_BYTE(0x4005 | (((rd) & 0xF) << 8))
+
+#define SH4_EMIT_SHLL8(rd) \
+  SH4_EMIT_BYTE(0x4018 | (((rd) & 0xF) << 8))
+
+#define SH4_EMIT_EXTU_B(rd, rm) \
+  SH4_EMIT_BYTE(0x600C | (((rd) & 0xF) << 8) | (((rm) & 0xF) << 4))
 
 #define SH4_EMIT_JSR(rn) \
   do { \
-    SH4_EMIT_BYTE(0x4003 | ((rn & 0xF) << 8)); \
+    SH4_EMIT_BYTE(0x400B | (((rn) & 0xF) << 8)); \
     SH4_EMIT_NOP(); \
   } while(0)
 
@@ -148,24 +210,37 @@ typedef enum {
     SH4_EMIT_NOP(); \
   } while(0)
 
+#define SH4_EMIT_LOAD_U8(rd, imm) \
+  do { \
+    u32 _u8 = (u32)(imm) & 0xFF; \
+    SH4_EMIT_MOVI((rd), _u8); \
+    if(_u8 & 0x80) SH4_EMIT_EXTU_B((rd), (rd)); \
+  } while(0)
+
+#define SH4_EMIT_ADD_UNSIGNED_BYTE(rd, imm) \
+  do { \
+    u32 _add_byte = (u32)(imm) & 0xFF; \
+    while(_add_byte > 127) { \
+      SH4_EMIT_ADDI8((rd), 127); \
+      _add_byte -= 127; \
+    } \
+    if(_add_byte != 0) SH4_EMIT_ADDI8((rd), _add_byte); \
+  } while(0)
+
 #define SH4_EMIT_LOAD_IMM(rd, imm) \
   do { \
-    u32 _imm = (imm); \
-    if((_imm & 0xFF) == _imm) { \
-      SH4_EMIT_MOVI(rd, _imm); \
+    u32 _imm = (u32)(imm); \
+    s32 _signed_imm = (s32)_imm; \
+    if(_signed_imm >= -128 && _signed_imm <= 127) { \
+      SH4_EMIT_MOVI((rd), _imm); \
     } else { \
-      SH4_EMIT_MOVI(rd, _imm & 0xFF); \
-      SH4_EMIT_MOVI(sh4_reg_r1, (_imm >> 8) & 0xFF); \
-      SH4_EMIT_BYTE(0x7008 | ((rd) << 8)); \
-      SH4_EMIT_OR(rd, rd, sh4_reg_r1); \
-      if(_imm > 0xFFFF) { \
-        SH4_EMIT_MOVI(sh4_reg_r1, (_imm >> 16) & 0xFF); \
-        SH4_EMIT_BYTE(0x7008 | ((rd) << 8)); \
-        SH4_EMIT_OR(rd, rd, sh4_reg_r1); \
-        SH4_EMIT_MOVI(sh4_reg_r1, (_imm >> 24) & 0xFF); \
-        SH4_EMIT_BYTE(0x7008 | ((rd) << 8)); \
-        SH4_EMIT_OR(rd, rd, sh4_reg_r1); \
-      } \
+      SH4_EMIT_LOAD_U8((rd), _imm >> 24); \
+      SH4_EMIT_SHLL8((rd)); \
+      SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm >> 16); \
+      SH4_EMIT_SHLL8((rd)); \
+      SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm >> 8); \
+      SH4_EMIT_SHLL8((rd)); \
+      SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm); \
     } \
   } while(0)
 
@@ -185,7 +260,7 @@ typedef enum {
   SH4_EMIT_BYTE(0x2008 | ((rd & 0xF) << 8) | ((rd & 0xF) << 4))
 
 #define SH4_EMIT_CMP_REG(rn, rm) \
-  SH4_EMIT_BYTE(0x200C | ((rn & 0xF) << 8) | ((rm & 0xF) << 4))
+  SH4_EMIT_BYTE(0x3000 | (((rn) & 0xF) << 8) | (((rm) & 0xF) << 4))
 
 typedef enum {
   CONDITION_TRUE,
@@ -334,13 +409,13 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_branch_filler_true(ireg_dest, ireg_src, writeback_location) \
   do { \
     SH4_EMIT_TST_REG(SH4_IREG(ireg_dest)); \
-    SH4_EMIT_BF_FILLER(writeback_location); \
+    SH4_EMIT_BT_FILLER(writeback_location); \
   } while(0)
 
 #define generate_branch_filler_false(ireg_dest, ireg_src, writeback_location) \
   do { \
     SH4_EMIT_TST_REG(SH4_IREG(ireg_dest)); \
-    SH4_EMIT_BT_FILLER(writeback_location); \
+    SH4_EMIT_BF_FILLER(writeback_location); \
   } while(0)
 
 #define generate_branch_filler_equal(ireg_dest, ireg_src, writeback_location) \
@@ -413,12 +488,10 @@ u32 function_cc execute_arm_translate(u32 cycles);
 
 #define generate_block_extra_vars_thumb() \
 
-#define translate_invalidate_dcache() \
+#define translate_invalidate_dcache_region(cache_start, cache_end) \
   do { \
-    extern u8 ram_translation_cache[]; \
-    extern u8 *ram_translation_ptr; \
-    icache_flush_range((u32)ram_translation_cache, \
-      (u32)(ram_translation_ptr - ram_translation_cache) + 0x100); \
+    sh4_invalidate_icache_region((u32)(cache_start), \
+     (u32)((u8 *)(cache_end) - (u8 *)(cache_start)) + 0x100); \
   } while(0)
 
 #define generate_load_reg_pc(ireg, reg_index, pc_offset) \
