@@ -43,17 +43,20 @@ extern u16 io_registers[];
   reg[REG_V_FLAG] = (reg[REG_CPSR] >> 28) & 0x01; \
 } while(0)
 
-#define check_for_interrupts() do { \
-  u32 address; \
-  if((io_registers[REG_IE] & io_registers[REG_IF]) && \
-   io_registers[REG_IME] && ((reg[REG_CPSR] & 0x80) == 0)) { \
-    reg_mode[MODE_IRQ][6] = reg[REG_PC] + 4; \
-    spsr[MODE_IRQ] = reg[REG_CPSR]; \
-    reg[REG_CPSR] = 0xD2; \
-    address = 0x00000018; \
-    set_cpu_mode(MODE_IRQ); \
-  } \
-} while(0)
+static u32 sh4_take_pending_irq(u32 return_pc)
+{
+  if((io_registers[REG_IE] & io_registers[REG_IF]) &&
+   io_registers[REG_IME] && ((reg[REG_CPSR] & 0x80) == 0))
+  {
+    reg_mode[MODE_IRQ][6] = return_pc + 4;
+    spsr[MODE_IRQ] = reg[REG_CPSR];
+    reg[REG_CPSR] = 0xD2;
+    set_cpu_mode(MODE_IRQ);
+    return 0x00000018;
+  }
+
+  return 0;
+}
 
 
 u32 function_cc execute_and(u32 rm, u32 rn) { return rn & rm; }
@@ -208,10 +211,14 @@ u32 function_cc execute_rrx(u32 value)
 }
 u32 function_cc execute_spsr_restore(u32 address)
 {
+  u32 irq_pc;
+
   reg[REG_CPSR] = spsr[reg[CPU_MODE]];
   extract_flags();
   set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-  check_for_interrupts();
+  irq_pc = sh4_take_pending_irq(address);
+  if(irq_pc != 0)
+    address = irq_pc;
 
   if(reg[REG_CPSR] & 0x20)
     address |= 0x01;
@@ -222,11 +229,13 @@ u32 function_cc execute_mul_flags(u32 dest)
 {
   calculate_z_flag(dest);
   calculate_n_flag(dest);
+  return 0;
 }
 u32 function_cc execute_mul_long_flags(u32 dest_lo, u32 dest_hi)
 {
   reg[REG_Z_FLAG] = (dest_lo == 0) & (dest_hi == 0);
   calculate_n_flag(dest_hi);
+  return 0;
 }
 u32 function_cc execute_read_cpsr()
 {
@@ -238,15 +247,17 @@ u32 function_cc execute_read_spsr()
   collapse_flags();
   return spsr[reg[CPU_MODE]];
 }
-void function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask)
+u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc)
 {
   reg[REG_CPSR] = (new_cpsr & store_mask) | (reg[REG_CPSR] & (~store_mask));
   extract_flags();
   if(store_mask & 0xFF)
   {
     set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-    check_for_interrupts();
+    return sh4_take_pending_irq(pc);
   }
+
+  return 0;
 }
 void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 {

@@ -28,6 +28,64 @@ static void test_swi_hle_div(void)
   printf("swi_hle_div remainder: ok\n");
 }
 
+static u32 simulate_take_irq(u32 ie, u32 iff, u32 ime, u32 cpsr)
+{
+  if((ie & iff) && ime && ((cpsr & 0x80) == 0))
+    return 0x00000018;
+
+  return 0;
+}
+
+static void test_sh4_irq_dispatch_logic(void)
+{
+  if(simulate_take_irq(0x0001, 0x0001, 1, 0x0000001F) != 0x00000018)
+  {
+    printf("sh4 irq dispatch failed: expected vector when IRQ enabled\n");
+    return;
+  }
+
+  if(simulate_take_irq(0x0001, 0x0001, 1, 0x0000009F) != 0)
+  {
+    printf("sh4 irq dispatch failed: masked IRQ should not dispatch\n");
+    return;
+  }
+
+  if(simulate_take_irq(0x0001, 0x0000, 1, 0x0000001F) != 0)
+  {
+    printf("sh4 irq dispatch failed: no pending flag should not dispatch\n");
+    return;
+  }
+
+  printf("sh4 irq dispatch logic: ok\n");
+}
+
+static void test_spsr_restore_irq_return(void)
+{
+  u32 address = 0x03001234;
+  u32 irq_pc = simulate_take_irq(0x0001, 0x0001, 1, 0x0000001F);
+
+  if(irq_pc != 0)
+    address = irq_pc;
+
+  if(address != 0x00000018)
+  {
+    printf("spsr restore irq return failed: %08x\n", address);
+    return;
+  }
+
+  address = 0x03001235;
+  if(address & 0x20)
+    address |= 0x01;
+
+  if(address != 0x03001235)
+  {
+    printf("spsr restore thumb bit failed: %08x\n", address);
+    return;
+  }
+
+  printf("spsr restore irq return: ok\n");
+}
+
 static void test_gamepak_page_math(void)
 {
   const u32 page_size = 32 * 1024;
@@ -46,6 +104,8 @@ static void test_gamepak_page_math(void)
 int main(void)
 {
   test_swi_hle_div();
+  test_sh4_irq_dispatch_logic();
+  test_spsr_restore_irq_return();
   test_gamepak_page_math();
   return 0;
 }

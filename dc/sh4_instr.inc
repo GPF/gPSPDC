@@ -520,10 +520,28 @@
 #define arm_psr_load_new_imm()                                                \
   generate_load_imm(a0, imm)                                                  \
 
+#define arm_psr_store_cpsr_post()                                             \
+  do {                                                                        \
+    u8 *_skip_irq;                                                            \
+    SH4_EMIT_TST_REG(sh4_reg_r0);                                             \
+    SH4_EMIT_BF_FILLER(_skip_irq);                                            \
+    SH4_EMIT_MOV(sh4_reg_r4, sh4_reg_r0);                                     \
+    generate_indirect_branch_arm();                                           \
+    generate_branch_patch_conditional(_skip_irq, translation_ptr);            \
+  } while(0)                                                                  \
+
+#define arm_psr_store_finish(cpsr)                                            \
+  generate_load_pc(a2, pc);                                                   \
+  generate_function_call(execute_store_cpsr);                                 \
+  arm_psr_store_cpsr_post()                                                   \
+
+#define arm_psr_store_finish(spsr)                                            \
+  generate_function_call(execute_store_spsr)                                  \
+
 #define arm_psr_store(op_type, psr_reg)                                       \
   arm_psr_load_new_##op_type();                                               \
   generate_load_imm(a1, psr_masks[psr_field]);                                \
-  generate_function_call(execute_store_##psr_reg)                             \
+  arm_psr_store_finish(psr_reg)                                               \
 
 #define arm_psr(op_type, transfer_type, psr_reg)                              \
 {                                                                             \
