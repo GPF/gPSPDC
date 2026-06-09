@@ -20,6 +20,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#define GPSPDC_VERSION "0.9.1-dc"
+
 #define ror(dest, value, shift)                                               \
   dest = ((value) >> shift) | ((value) << (32 - shift))                       \
 

@@ -96,7 +96,7 @@ make -C tests test
 - **`game_config.txt`** — per-title options (idle-loop targets, flash size, stack tweaks). See comments in the bundled file.
 - **`<romname>.cfg`** — per-game frameskip and clock options, saved next to the ROM.
 
-See [HIGH_IMPACT_FIXES.md](HIGH_IMPACT_FIXES.md) for recent port work and the development roadmap. Third-party code attributions are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+See [HIGH_IMPACT_FIXES.md](HIGH_IMPACT_FIXES.md) for recent port work and the development roadmap. Before burning a disc, run the checks in [HARDWARE_SMOKE_TEST.md](HARDWARE_SMOKE_TEST.md). Third-party code attributions are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Cheats
 

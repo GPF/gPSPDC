@@ -1,0 +1,15 @@
+name: Host tests
+
+on:
+  push:
+    branches: [dreamcast, 'cursor/**']
+  pull_request:
+    branches: [dreamcast]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run contract tests
+        run: make -C tests test

@@ -95,6 +95,9 @@ u32 update_gba();
 void reset_gba();
 void synchronize();
 void quit();
+#ifdef _arch_dreamcast
+void gpsp_gamepak_load_error(const char *filename);
+#endif
 void delay_us(u32 us_count);
 void get_ticks_us(u64 *tick_return);
 void game_name_ext(u8 *src, u8 *buffer, u8 *extension);

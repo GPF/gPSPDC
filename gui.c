@@ -949,7 +949,11 @@ u32 menu(u16 *original_screen)
     {
        if(load_gamepak(load_filename) == -1)
        {
+#ifdef _arch_dreamcast
+         gpsp_gamepak_load_error((char *)load_filename);
+#else
          quit();
+#endif
        }
        reset_gba();
        return_value = 1;
@@ -1315,7 +1319,9 @@ u32 menu(u16 *original_screen)
     first_load = 1;
     memset(original_screen, 0x00, 240 * 160 * 2);
     print_string_ext("No game loaded yet.", 0xFFFF, 0x0000,
-     60, 75,original_screen, 240, 0);
+     60, 75, original_screen, 240, 0);
+    print_string_ext("gPSPDC " GPSPDC_VERSION, 0xFFFF, 0x0000,
+     70, 95, original_screen, 240, 0);
   }
 
   choose_menu(&main_menu);

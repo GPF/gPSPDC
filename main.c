@@ -208,7 +208,7 @@ static void gpsp_no_memory_error(void)
   gpsp_fatal_error_screen(lines, 3);
 }
 
-static void gpsp_gamepak_load_error(const char *filename)
+void gpsp_gamepak_load_error(const char *filename)
 {
   static const char *prefix = "Could not load game ROM:";
   static const char *suffix = "Press Start to exit.";

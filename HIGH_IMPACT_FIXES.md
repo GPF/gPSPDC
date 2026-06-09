@@ -102,6 +102,20 @@ Unified gamepak swap paging in `memory.c`:
 
 ---
 
+## Phase 6 — Release verification (P6)
+
+**Status:** Complete
+
+- **Version string** — `GPSPDC_VERSION` (`0.9.1-dc`) in `common.h`; shown on the empty-ROM menu splash.
+- **Menu load errors (Dreamcast)** — failed in-menu ROM loads now call `gpsp_gamepak_load_error()` instead of silently exiting via `quit()`.
+- **Hardware smoke test** — `HARDWARE_SMOKE_TEST.md` documents boot, fatal-error, gameplay, savestate, cheat, and large-ROM checks for Dreamcast/Flycast.
+- **CI** — GitHub Actions workflow runs `make -C tests test` on push/PR to `dreamcast`.
+- **Host tests** — `tests/phase6_release_verification_test.c` contract-checks version, menu error path, smoke-test doc, and CI workflow.
+
+**Remaining risks:** manual hardware/Flycast execution of the smoke-test checklist; KOS cross-compile not run in CI.
+
+---
+
 ## Priority summary
 
 | Phase | Fix | Effort | Impact |
@@ -112,6 +126,7 @@ Unified gamepak swap paging in `memory.c`:
 | **3** | ROM buffer / paging strategy | Medium | Large ROM support ✓ |
 | **4** | Release polish | Small | Cleaner release build ✓ |
 | **5** | User readiness audit | Small | On-screen errors, docs, debug gating ✓ |
+| **6** | Release verification | Small | Version, smoke-test doc, CI, menu errors ✓ |
 
 ```mermaid
 flowchart TD
@@ -122,6 +137,7 @@ flowchart TD
     F[Phase 3: Evaluate ROM buffer sizing] --> G[Phase 4: Release polish]
     D --> G
     G --> H[Phase 5: User readiness audit]
+    H --> I[Phase 6: Release verification]
 ```
 
 ---
