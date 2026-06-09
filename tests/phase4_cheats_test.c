@@ -207,6 +207,7 @@ static int test_cheats_source_contract(void)
   if(strstr(cheats_c, "case 0x6:") == NULL ||
    strstr(cheats_c, "case 0x8:") == NULL ||
    strstr(cheats_c, "cheat_add_master_hook") == NULL ||
+   strstr(cheats_c, "cheat_hook_pc_valid") == NULL ||
    strstr(cheats_c, "DEADFACE") == NULL ||
    strstr(threaded, "cheat_pc_is_hook(pc)") == NULL)
   {

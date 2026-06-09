@@ -1,37 +1,5 @@
-# gpSP makefile
-# Gilead Kutnick - Exophase
+# Host SDL build delegates to x86/ (see x86/Makefile for sources).
+.PHONY: all clean
 
-# Global definitions
-
-CC        = gcc
-STRIP     = strip
-AS        = as
-
-PREFIX    = /usr
-OBJS      = main.o cpu.o memory.o video.o input.o \
-	    sound.o cpu_threaded.o gui.o x86_stub.o
-BIN       = gpsp.exe 
-
-# Platform specific definitions 
-
-CFLAGS     += 
-INCLUDES   = -I${PREFIX}/include `sdl-config --cflags`
-LIBS       = -L${PREFIX}/lib `sdl-config --libs` -mconsole 
-
-# Compilation:
-
-.SUFFIXES: .c .S
-
-%.o: %.c
-	${CC} ${CFLAGS} ${INCLUDES} -c -o $@ $<
-
-%.o: %.S
-	${AS} -o $@ $<
-
-all:	${OBJS}
-	${CC} ${OBJS} ${LIBS} -o ${BIN}  
-	${STRIP} ${BIN}
-
-clean:
-	rm -f *.o ${BIN} 
-
+all clean:
+	$(MAKE) -C x86 $@

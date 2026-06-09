@@ -215,7 +215,8 @@ void gpsp_gamepak_load_error(const char *filename)
   char detail[512];
   const char *lines[3];
 
-  sprintf(detail, "%s", filename);
+  snprintf(detail, sizeof(detail), "%s",
+   filename ? filename : "(unknown file)");
   lines[0] = prefix;
   lines[1] = detail;
   lines[2] = suffix;
@@ -230,9 +231,9 @@ void gpsp_audio_init_error(const char *sdl_error)
   const char *lines[3];
 
   if(sdl_error && sdl_error[0])
-    sprintf(detail, "%s", sdl_error);
+    snprintf(detail, sizeof(detail), "%s", sdl_error);
   else
-    sprintf(detail, "Unknown SDL audio error.");
+    snprintf(detail, sizeof(detail), "Unknown SDL audio error.");
 
   lines[0] = prefix;
   lines[1] = detail;

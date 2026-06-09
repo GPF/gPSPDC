@@ -139,7 +139,7 @@ Unified gamepak swap paging in `memory.c`:
 
 ## Phase 8 — Audio, sprite, build, and menu polish (P8)
 
-**Status:** Complete
+**Status:** Complete (audited and polished — Phase 8 audit pass)
 
 ### Audio
 - **`sound_reset_fifo()`** — resets the requested Direct Sound channel (A or B), not always channel 0
@@ -151,7 +151,7 @@ Unified gamepak swap paging in `memory.c`:
 - **`copy_screen()`** — pitch-aware row copy (fixes menu backgrounds and savestate previews)
 - **Frameskip + affine** — affine BG/OBJ reference updates run even when rendering is skipped
 - **OBJ priority list** — bounds check before inserting into the 128-entry per-scanline list
-- **`blit_to_screen()`** — pitch-aware copy helper; compile with `-DGPSP_DC_BLIT_MEMCPY` for safe memcpy blits
+- **`blit_to_screen()`** — pitch-aware copy helper; `-DGPSP_DC_BLIT_MEMCPY` enabled by default in `dc/Makefile` for safe memcpy blits (SQ path available when undefined)
 
 ### Build stability
 - **`dc/Makefile`** — `VPATH` keeps object files under `dc/` (no root `.o` collisions)
@@ -168,8 +168,9 @@ Unified gamepak swap paging in `memory.c`:
 - **Savestate previews** — deferred CD reads; slot sync on main menu without thumbnail reload
 
 - **Host tests** — `tests/phase8_dreamcast_polish_test.c` contract-checks audio, video, menu, and build polish
+- **Phase 8 audit polish:** root `Makefile` delegates to `x86/`; cheat master hooks validated to ROM/EWRAM/IWRAM; fatal-error strings use bounded `snprintf`; README documents VRAM SMC and host build path
 
-**Remaining risks:** hardware validation of menu feel, SQ blit thumbnails, and audio buffer tuning on real hardware/Flycast.
+**Remaining risks:** hardware validation of menu feel and audio buffer tuning on real hardware/Flycast.
 
 ---
 
@@ -212,3 +213,5 @@ flowchart TD
 - Audio/sprite correctness fixes (Direct Sound FIFO, pitch-aware snapshots, frameskip affine)
 - Build stability (VPATH, pinned Docker image, CI consolidation)
 - Menu responsiveness (dirty redraw, deferred savestate previews, no video mode switching on DC)
+- Phase 1–7 dynarec LDM/STM, CPSR macro, memory-map guard, and expanded contract tests
+- Phase 8 audit: host Makefile, cheat hook bounds, bounded fatal-error strings
