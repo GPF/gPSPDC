@@ -1170,10 +1170,16 @@ u32 menu(u16 *original_screen)
   {
     string_selection_option(NULL, "Display scaling", scale_options,
      (u32 *)(&screen_scale), 3,
+#ifdef _arch_dreamcast
+     "Determines how the GBA screen is displayed on Dreamcast.\n"
+     "Select unscaled 3:2 for native GBA resolution, scaled 3:2 to\n"
+     "preserve aspect ratio, and fullscreen to fill the screen.", 2),
+#else
      "Determines how the GBA screen is resized in relation to the entire\n"
      "screen. Select unscaled 3:2 for GBA resolution, scaled 3:2 for GBA\n"
      "aspect ratio scaled to fill the height of the PSP screen, and\n"
      "fullscreen to fill the entire PSP screen.", 2),
+#endif
     string_selection_option(NULL, "Screen filtering", yes_no_options,
      (u32 *)(&screen_filter), 2,
      "Determines whether or not bilinear filtering should be used when\n"
@@ -1207,7 +1213,11 @@ u32 menu(u16 *original_screen)
      "Set the size (in bytes) of the audio buffer. Larger values may result\n"
      "in slightly better performance at the cost of latency; the lowest\n"
      "value will give the most responsive audio.\n"
+#ifdef _arch_dreamcast
+     "Restart gPSPDC for this option to take effect.",
+#else
      "This option requires gpSP to be restarted before it will take effect.",
+#endif
      10),
     submenu_option(NULL, "Back", "Return to the main menu.", 12)
   };
@@ -1228,15 +1238,28 @@ u32 menu(u16 *original_screen)
     cheat_option(9),
     string_selection_option(NULL, "Clock speed",
      clock_speed_options, &clock_speed_number, 10,
+#ifdef _arch_dreamcast
+     "Saved in config for compatibility. Clock speed changes apply only\n"
+     "on PSP builds and have no effect on Dreamcast.", 11),
+#else
      "Change the clock speed of the device. Higher clock speed will yield\n"
      "better performance, but will use drain battery life further.", 11),
+#endif
     string_selection_option(NULL, "Update backup",
      update_backup_options, &update_backup_flag, 2,
+#ifdef _arch_dreamcast
+     "Determines when in-game save files should be written back to\n"
+     "the VMU or disc. If set to 'automatic' writebacks will occur shortly\n"
+     "after the game's backup is altered. On 'exit only' it will only be\n"
+     "written back when you exit from this menu.\n"
+     "Use the latter with extreme care.", 12),
+#else
      "Determines when in-game save files should be written back to\n"
      "memstick. If set to 'automatic' writebacks will occur shortly after\n"
      "the game's backup is altered. On 'exit only' it will only be written\n"
      "back when you exit from this menu (NOT from using the home button).\n"
      "Use the latter with extreme care.", 12),
+#endif
     submenu_option(NULL, "Back", "Return to the main menu.", 14)
   };
 
@@ -1271,10 +1294,17 @@ u32 menu(u16 *original_screen)
     gamepad_config_option("D-pad down   ", 1),
     gamepad_config_option("D-pad left   ", 2),
     gamepad_config_option("D-pad right  ", 3),
+#ifdef _arch_dreamcast
+    gamepad_config_option("A button     ", 4),
+    gamepad_config_option("B button     ", 5),
+    gamepad_config_option("X button     ", 6),
+    gamepad_config_option("Y button     ", 7),
+#else
     gamepad_config_option("Circle       ", 4),
     gamepad_config_option("Cross        ", 5),
     gamepad_config_option("Square       ", 6),
     gamepad_config_option("Triangle     ", 7),
+#endif
     gamepad_config_option("Left Trigger ", 8),
     gamepad_config_option("Right Trigger", 9),
     gamepad_config_option("Start        ", 10),
@@ -1322,10 +1352,19 @@ u32 menu(u16 *original_screen)
      "currently active savestate for this game (or to load a savestate\n"
      "file from another game)", 4),
     submenu_option(&gamepad_config_menu, "Configure gamepad input",
+#ifdef _arch_dreamcast
+     "Select to change the in-game behavior of the controller buttons\n"
+     "and d-pad.",
+#else
      "Select to change the in-game behavior of the PSP buttons and d-pad.",
+#endif
      6),
     submenu_option(&analog_config_menu, "Configure analog input",
+#ifdef _arch_dreamcast
+     "Select to change the in-game behavior of the analog stick.", 7),
+#else
      "Select to change the in-game behavior of the PSP analog nub.", 7),
+#endif
     submenu_option(&cheats_misc_menu, "Cheats and Miscellaneous options",
      "Select to manage cheats, set backup behavior, and set device clock\n"
      "speed.", 9),
@@ -1336,8 +1375,14 @@ u32 menu(u16 *original_screen)
      "Select to reset the GBA with the current game loaded.", 12),
     action_option(menu_exit, NULL, "Return to game",
      "Select to exit this menu and resume gameplay.", 13),
-    action_option(menu_quit, NULL, "Exit gpSP",
+    action_option(menu_quit, NULL,
+#ifdef _arch_dreamcast
+     "Exit gPSPDC",
+     "Select to exit gPSPDC.", 15)
+#else
+     "Exit gpSP",
      "Select to exit gpSP and return to the PSP XMB/loader.", 15)
+#endif
   };
 
   make_menu(main, submenu_main, NULL);

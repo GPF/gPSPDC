@@ -11,7 +11,7 @@ KOS_ROMDISK_DIR = romdisk
 
 include $(KOS_BASE)/Makefile.rules
 
-KOS_CFLAGS += -D_arch_dreamcast=1  \
+KOS_CFLAGS += -D_arch_dreamcast=1 -DGPSP_DC_BLIT_MEMCPY  \
     -I. \
 	-I.. \
     -I$(KOS_BASE)/addons/include \

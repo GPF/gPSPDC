@@ -87,6 +87,20 @@ static void expect_path_exists(const char *path)
   }
 }
 
+static unsigned int count_substring(const char *text, const char *needle)
+{
+  unsigned int count = 0;
+  const char *cursor;
+
+  if(text == NULL || needle == NULL || needle[0] == '\0')
+    return 0;
+
+  for(cursor = text; (cursor = strstr(cursor, needle)) != NULL; cursor++)
+    count++;
+
+  return count;
+}
+
 static void test_makefile_sources(void)
 {
   static const char *sources[] =
@@ -146,12 +160,55 @@ static void test_dreamcast_ci_contract(void)
   printf("dreamcast CI contract: ok\n");
 }
 
+static void test_game_config_sync_contract(void)
+{
+  char *root_config = read_text_file("../game_config.txt");
+  char *disc_config = read_text_file("../dc/cd/gbaDC/game_config.txt");
+  char *sync_script = read_text_file("../scripts/sync-game-config.sh");
+  char *dc_sh = read_text_file("../dc/dc.sh");
+  unsigned int root_entries;
+  unsigned int disc_entries;
+
+  expect_contains("sync game config script", sync_script,
+   "dc/cd/gbaDC/game_config.txt");
+  expect_contains("dc.sh sync game config", dc_sh, "sync-game-config.sh");
+  expect_contains("dc.sh bios check", dc_sh, "cd/gba_bios.bin");
+  expect_contains("dc.sh elf check", dc_sh, "gdC.elf");
+
+  root_entries = count_substring(root_config, "game_name");
+  disc_entries = count_substring(disc_config, "game_name");
+
+  if(root_entries == 0)
+  {
+    printf("game config sync failed: root game_config.txt has no entries\n");
+    failures++;
+  }
+  else if(root_entries != disc_entries)
+  {
+    printf("game config sync failed: root has %u entries, disc has %u\n",
+     root_entries, disc_entries);
+    failures++;
+  }
+
+  if(root_config != NULL)
+    free(root_config);
+  if(disc_config != NULL)
+    free(disc_config);
+  if(sync_script != NULL)
+    free(sync_script);
+  if(dc_sh != NULL)
+    free(dc_sh);
+
+  printf("game config sync contract: ok\n");
+}
+
 int main(void)
 {
   failures = 0;
 
   test_makefile_sources();
   test_dreamcast_ci_contract();
+  test_game_config_sync_contract();
 
   if(failures != 0)
   {

@@ -108,6 +108,10 @@ static void test_menu_contract(void)
   expect_contains("savestate slot sync", gui_c, "menu_sync_savestate_slot");
   expect_contains("dreamcast menu input delay", input_c,
    "#ifndef _arch_dreamcast");
+  expect_contains("dreamcast menu exit label", gui_c, "\"Exit gPSPDC\"");
+  expect_contains("dreamcast gamepad labels", gui_c, "\"A button     \"");
+  expect_contains("dreamcast scaling help", gui_c,
+   "displayed on Dreamcast");
 
   if(gui_c != NULL)
     free(gui_c);
@@ -125,6 +129,7 @@ static void test_build_contract(void)
   expect_contains("dc makefile VPATH", makefile, "VPATH += .. .");
   expect_contains("pinned docker image", build_script,
    "gcc-9__v2.0.0");
+  expect_contains("safe dc blit default", makefile, "GPSP_DC_BLIT_MEMCPY");
 
   if(makefile != NULL)
     free(makefile);
