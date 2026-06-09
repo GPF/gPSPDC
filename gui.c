@@ -256,8 +256,17 @@ s32 load_file(u8 **wildcards, u8 *result)
       if(browser_dirty)
       {
         print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
+#ifdef _arch_dreamcast
+        print_string("ROM files", COLOR_HELP_TEXT, COLOR_BG, FILE_LIST_POSITION, 0);
+        print_string("Folders", COLOR_HELP_TEXT, COLOR_BG, DIR_LIST_POSITION, 0);
+        print_string("D-Pad: move   L/R: column   A/Start: open",
+         COLOR_HELP_TEXT, COLOR_BG, 0, 250);
+        print_string("B: cancel   X: parent folder",
+         COLOR_HELP_TEXT, COLOR_BG, 0, 260);
+#else
         print_string("Press X to return to the main menu.",
          COLOR_HELP_TEXT, COLOR_BG, 20, 260);
+#endif
 
         for(i = 0, current_file_number = i + current_file_scroll_value;
          i < FILE_LIST_ROWS; i++, current_file_number++)
@@ -1198,7 +1207,7 @@ u32 menu(u16 *original_screen)
      "are allowed to be skipped consecutively.\n"
      "For manual frameskip, determines the number of frames that will\n"
      "always be skipped.", 6),
-    string_selection_option(NULL, "Framskip variation",
+    string_selection_option(NULL, "Frameskip variation",
      frameskip_variation_options, &random_skip, 2,
      "If objects in the game flicker at a regular rate certain manual\n"
      "frameskip values may cause them to normally disappear. Change this\n"
@@ -1236,12 +1245,9 @@ u32 menu(u16 *original_screen)
     cheat_option(7),
     cheat_option(8),
     cheat_option(9),
+#ifndef _arch_dreamcast
     string_selection_option(NULL, "Clock speed",
      clock_speed_options, &clock_speed_number, 10,
-#ifdef _arch_dreamcast
-     "Saved in config for compatibility. Clock speed changes apply only\n"
-     "on PSP builds and have no effect on Dreamcast.", 11),
-#else
      "Change the clock speed of the device. Higher clock speed will yield\n"
      "better performance, but will use drain battery life further.", 11),
 #endif
@@ -1252,15 +1258,25 @@ u32 menu(u16 *original_screen)
      "the VMU or disc. If set to 'automatic' writebacks will occur shortly\n"
      "after the game's backup is altered. On 'exit only' it will only be\n"
      "written back when you exit from this menu.\n"
-     "Use the latter with extreme care.", 12),
+     "Use the latter with extreme care.",
 #else
      "Determines when in-game save files should be written back to\n"
      "memstick. If set to 'automatic' writebacks will occur shortly after\n"
      "the game's backup is altered. On 'exit only' it will only be written\n"
      "back when you exit from this menu (NOT from using the home button).\n"
-     "Use the latter with extreme care.", 12),
+     "Use the latter with extreme care.",
 #endif
-    submenu_option(NULL, "Back", "Return to the main menu.", 14)
+#ifndef _arch_dreamcast
+     12),
+#else
+     11),
+#endif
+    submenu_option(NULL, "Back", "Return to the main menu.",
+#ifndef _arch_dreamcast
+     14)
+#else
+     12)
+#endif
   };
 
   make_menu(cheats_misc, submenu_cheats_misc, NULL);
@@ -1359,15 +1375,17 @@ u32 menu(u16 *original_screen)
      "Select to change the in-game behavior of the PSP buttons and d-pad.",
 #endif
      6),
+#ifndef _arch_dreamcast
     submenu_option(&analog_config_menu, "Configure analog input",
-#ifdef _arch_dreamcast
-     "Select to change the in-game behavior of the analog stick.", 7),
-#else
      "Select to change the in-game behavior of the PSP analog nub.", 7),
 #endif
     submenu_option(&cheats_misc_menu, "Cheats and Miscellaneous options",
+#ifdef _arch_dreamcast
+     "Select to manage cheats and set backup behavior.", 9),
+#else
      "Select to manage cheats, set backup behavior, and set device clock\n"
      "speed.", 9),
+#endif
     action_option(menu_load, NULL, "Load new game",
      "Select to load a new game (will exit a game if currently playing).",
      11),
@@ -1386,6 +1404,23 @@ u32 menu(u16 *original_screen)
   };
 
   make_menu(main, submenu_main, NULL);
+
+  u32 menu_option_unavailable(menu_option_type *option)
+  {
+    if(!first_load)
+      return 0;
+
+    if(option->action_function == menu_restart ||
+     option->action_function == menu_exit ||
+     option->action_function == menu_load_state ||
+     option->action_function == menu_save_state)
+      return 1;
+
+    if(option->sub_menu == &savestate_menu)
+      return 1;
+
+    return 0;
+  }
 
   void choose_menu(menu_type *new_menu)
   {
@@ -1436,7 +1471,11 @@ u32 menu(u16 *original_screen)
     print_string_ext("No game loaded yet.", 0xFFFF, 0x0000,
      60, 75, original_screen, 240, 0);
     print_string_ext("gPSPDC " GPSPDC_VERSION, 0xFFFF, 0x0000,
-     70, 95, original_screen, 240, 0);
+     70, 90, original_screen, 240, 0);
+    print_string_ext("Load new game to begin.", 0xFFFF, 0x0000,
+     55, 110, original_screen, 240, 0);
+    print_string_ext("Y: pause menu (default)", 0xFFFF, 0x0000,
+     45, 130, original_screen, 240, 0);
   }
 
   choose_menu(&main_menu);
@@ -1480,6 +1519,13 @@ u32 menu(u16 *original_screen)
         {
           strcpy(line_buffer, display_option->display_string);
         }
+
+        if(menu_option_unavailable(display_option))
+        {
+          print_string_pad(line_buffer, COLOR_INACTIVE_ITEM, COLOR_BG, 10,
+           (display_option->line_number * 10) + 40, 36);
+        }
+        else
 
         if(display_option == current_option)
         {
@@ -1573,11 +1619,14 @@ u32 menu(u16 *original_screen)
         break;
 
       case CURSOR_SELECT:
-        if(current_option->option_type & ACTION_OPTION)
-          current_option->action_function();
+        if(!menu_option_unavailable(current_option))
+        {
+          if(current_option->option_type & ACTION_OPTION)
+            current_option->action_function();
 
-        if(current_option->option_type & SUBMENU_OPTION)
-          choose_menu(current_option->sub_menu);
+          if(current_option->option_type & SUBMENU_OPTION)
+            choose_menu(current_option->sub_menu);
+        }
         break;
 
       default:
@@ -1595,6 +1644,8 @@ u32 menu(u16 *original_screen)
   #ifdef PSP_BUILD
     scePowerSetClockFrequency(clock_speed, clock_speed, clock_speed / 2);
   #endif
+
+  save_config_file();
 
   if(sound_initialized)
     SDL_PauseAudio(0);

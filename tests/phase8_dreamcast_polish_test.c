@@ -119,6 +119,14 @@ static void test_menu_contract(void)
   expect_contains("dreamcast gamepad labels", gui_c, "\"A button     \"");
   expect_contains("dreamcast scaling help", gui_c,
    "displayed on Dreamcast");
+  expect_contains("menu saves config on exit", gui_c,
+   "save_config_file();");
+  expect_contains("rom browser dc help", gui_c,
+   "B: cancel   X: parent folder");
+  expect_contains("dc gamepad config in gameplay", input_c,
+   "dc_process_special_button");
+  expect_contains("dc menu button mapping", input_c,
+   "BUTTON_ID_MENU");
 
   if(gui_c != NULL)
     free(gui_c);
