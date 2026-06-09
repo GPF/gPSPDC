@@ -19,6 +19,9 @@
 
 #include "SDL.h"
 #include "common.h"
+#ifdef _arch_dreamcast
+#include "main.h"
+#endif
 
 u32 global_enable_audio = 1;
 
@@ -157,7 +160,7 @@ void sound_timer(fixed16_16 frequency_step, u32 channel)
 
 void sound_reset_fifo(u32 channel)
 {
-  direct_sound_struct *ds = direct_sound_channel;
+  direct_sound_struct *ds = direct_sound_channel + channel;
 
   memset(ds->fifo, 0, 32);
 }
@@ -627,7 +630,7 @@ void sound_callback(void *userdata, Uint8 *stream, int length)
       u32 partial_length = (BUFFER_SIZE - sound_buffer_base) * 2;
       sound_copy_null(sound_buffer_base, partial_length);
       source = (s16 *)sound_buffer;
-      sound_copy(0, length - partial_length, normal);
+      sound_copy_null(0, length - partial_length);
       sound_buffer_base = (length - partial_length) / 2;
     }
     else
@@ -723,7 +726,7 @@ void sound_exit()
 
 void init_sound()
 {
-#ifdef PSP_BUILD
+#if defined(PSP_BUILD) || defined(_arch_dreamcast)
   audio_buffer_size = (audio_buffer_size_number * 1024) + 2048;
 #else
   audio_buffer_size = 2048;
@@ -750,7 +753,16 @@ void init_sound()
 
   reset_sound();
 
-  SDL_OpenAudio(&desired_spec, &sound_settings);
+  if(SDL_OpenAudio(&desired_spec, &sound_settings) != 0)
+  {
+#ifdef _arch_dreamcast
+    gpsp_audio_init_error(SDL_GetError());
+#else
+    fprintf(stderr, "SDL_OpenAudio failed: %s\n", SDL_GetError());
+#endif
+    return;
+  }
+
   sound_frequency = sound_settings.freq;
   sound_mutex = SDL_CreateMutex();
   sound_cv = SDL_CreateCond();

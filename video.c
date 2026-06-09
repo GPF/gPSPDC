@@ -2124,9 +2124,12 @@ void order_obj(u32 video_mode)
             for(row = obj_y; row < obj_y + obj_height; row++)
             {
               current_count = obj_priority_count[obj_priority][row];
-              obj_priority_list[obj_priority][row][current_count] = obj_num;
-              obj_priority_count[obj_priority][row] = current_count + 1;
-              obj_alpha_count[row]++;
+              if(current_count < 128)
+              {
+                obj_priority_list[obj_priority][row][current_count] = obj_num;
+                obj_priority_count[obj_priority][row] = current_count + 1;
+                obj_alpha_count[row]++;
+              }
             }
           }
           else
@@ -2139,8 +2142,11 @@ void order_obj(u32 video_mode)
             for(row = obj_y; row < obj_y + obj_height; row++)
             {
               current_count = obj_priority_count[obj_priority][row];
-              obj_priority_list[obj_priority][row][current_count] = obj_num;
-              obj_priority_count[obj_priority][row] = current_count + 1;
+              if(current_count < 128)
+              {
+                obj_priority_list[obj_priority][row][current_count] = obj_num;
+                obj_priority_count[obj_priority][row] = current_count + 1;
+              }
             }
           }
         }
@@ -3167,33 +3173,33 @@ void update_scanline()
 
   order_layers((dispcnt >> 8) & active_layers[video_mode]);
 
-  if(skip_next_frame)
-    return;
-
-  // If the screen is in in forced blank draw pure white.
-  if(dispcnt & 0x80)
+  if(!skip_next_frame)
   {
-    fill_line_color16(0xFFFF, screen_offset, 0, 240);
-  }
-  else
-  {
-    if(video_mode < 3)
+    // If the screen is in in forced blank draw pure white.
+    if(dispcnt & 0x80)
     {
-      if(dispcnt >> 13)
-      {
-        render_scanline_window_tile(screen_offset, dispcnt);
-      }
-      else
-      {
-        render_scanline_tile(screen_offset, dispcnt);
-      }
+      fill_line_color16(0xFFFF, screen_offset, 0, 240);
     }
     else
     {
-      if(dispcnt >> 13)
-        render_scanline_window_bitmap(screen_offset, dispcnt);
+      if(video_mode < 3)
+      {
+        if(dispcnt >> 13)
+        {
+          render_scanline_window_tile(screen_offset, dispcnt);
+        }
+        else
+        {
+          render_scanline_tile(screen_offset, dispcnt);
+        }
+      }
       else
-        render_scanline_bitmap(screen_offset, dispcnt);
+      {
+        if(dispcnt >> 13)
+          render_scanline_window_bitmap(screen_offset, dispcnt);
+        else
+          render_scanline_bitmap(screen_offset, dispcnt);
+      }
     }
   }
 
@@ -3635,14 +3641,47 @@ void clear_screen_region(u32 x, u32 y, u32 w, u32 h, u16 color)
 
 u16 *copy_screen()
 {
+  u32 pitch = get_screen_pitch();
+  u16 *src = get_screen_pixels();
   u16 *copy = malloc(240 * 160 * 2);
-  memcpy(copy, get_screen_pixels(), 240 * 160 * 2);
+  u32 y, x;
+  u16 *dest = copy;
+
+  for(y = 0; y < 160; y++)
+  {
+    u16 *src_line = src + (y * pitch);
+
+    for(x = 0; x < 240; x++)
+      *dest++ = src_line[x];
+  }
+
   return copy;
+}
+
+static void blit_to_screen_pitch_copy(u16 *src, u32 w, u32 h,
+ u32 dest_x, u32 dest_y)
+{
+  u32 pitch = get_screen_pitch();
+  u16 *dest_ptr = get_screen_pixels() + dest_x + (dest_y * pitch);
+  u16 *src_ptr = src;
+  u32 line_skip = pitch - w;
+  u32 x, y;
+
+  for(y = 0; y < h; y++)
+  {
+    for(x = 0; x < w; x++, src_ptr++, dest_ptr++)
+      *dest_ptr = *src_ptr;
+
+    dest_ptr += line_skip;
+  }
 }
 
 void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y)
 {
 #ifdef _arch_dreamcast
+#ifdef GPSP_DC_BLIT_MEMCPY
+  blit_to_screen_pitch_copy(src, w, h, dest_x, dest_y);
+#else
   u32 pitch = get_screen_pitch();
   u16 *dest_base = get_screen_pixels();
   u32 dest_offset = dest_x + (dest_y * pitch);
@@ -3685,20 +3724,9 @@ void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y)
   }
 
   asm volatile("nop; nop; nop; nop;");
+#endif
 #else
-  u32 pitch = get_screen_pitch();
-  u16 *dest_ptr = get_screen_pixels() + dest_x + (dest_y * pitch);
-  u16 *src_ptr = src;
-  u32 line_skip = pitch - w;
-  u32 x, y;
-
-  for(y = 0; y < h; y++)
-  {
-    for(x = 0; x < w; x++, src_ptr++, dest_ptr++)
-      *dest_ptr = *src_ptr;
-
-    dest_ptr += line_skip;
-  }
+  blit_to_screen_pitch_copy(src, w, h, dest_x, dest_y);
 #endif
 }
 
