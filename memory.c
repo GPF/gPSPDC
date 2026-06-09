@@ -2893,38 +2893,23 @@ cpu_alert_type gpsp_dma_transfer(dma_transfer_type *dma)
 // Picks a page to evict
 u32 page_time = 0;
 
-u32 evict_gamepak_page()
+static void unmap_gamepak_physical_page(u32 physical_index)
 {
-  // Find the one with the smallest frame timestamp
-  u32 page_index = 0;
-  u32 physical_index;
-  u32 smallest = gamepak_memory_map[0].page_timestamp;
-  u32 i;
-
-  for(i = 1; i < gamepak_ram_pages; i++)
-  {
-    if(gamepak_memory_map[i].page_timestamp <= smallest)
-    {
-      smallest = gamepak_memory_map[i].page_timestamp;
-      page_index = i;
-    }
-  }
-
-  physical_index = gamepak_memory_map[page_index].physical_index;
-
   memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] = NULL;
   memory_map_read[(0x0A000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = NULL;
   memory_map_read[(0x0C000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = NULL;
-
-  return page_index;
 }
 
-u8 *load_gamepak_page(u32 physical_index)
+static u8 gamepak_physical_page_is_mapped(u32 physical_index)
 {
   if(physical_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
-    return gamepak_rom;
+    return 1;
 
-  u32 page_index = evict_gamepak_page();
+  return memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] != NULL;
+}
+
+static void map_gamepak_physical_page(u32 physical_index, u32 page_index)
+{
   u32 page_offset = page_index * GAMEPAK_SWAP_PAGE_SIZE;
   u8 *swap_location = gamepak_rom + page_offset;
 
@@ -2943,8 +2928,88 @@ u8 *load_gamepak_page(u32 physical_index)
   {
     memcpy(swap_location + 0xC4, rtc_registers, sizeof(rtc_registers));
   }
+}
 
-  return swap_location;
+u32 evict_gamepak_page()
+{
+  // Find the one with the smallest frame timestamp
+  u32 page_index = 0;
+  u32 physical_index;
+  u32 smallest = gamepak_memory_map[0].page_timestamp;
+  u32 i;
+
+  for(i = 1; i < gamepak_ram_pages; i++)
+  {
+    if(gamepak_memory_map[i].page_timestamp <= smallest)
+    {
+      smallest = gamepak_memory_map[i].page_timestamp;
+      page_index = i;
+    }
+  }
+
+  physical_index = gamepak_memory_map[page_index].physical_index;
+  unmap_gamepak_physical_page(physical_index);
+
+  return page_index;
+}
+
+static u32 evict_gamepak_page_except(u32 except_page_index)
+{
+  u32 page_index = except_page_index;
+  u32 smallest = 0xFFFFFFFF;
+  u32 i;
+
+  if(gamepak_ram_pages <= 1)
+    return evict_gamepak_page();
+
+  for(i = 0; i < gamepak_ram_pages; i++)
+  {
+    if(i == except_page_index)
+      continue;
+
+    if(gamepak_memory_map[i].page_timestamp < smallest)
+    {
+      smallest = gamepak_memory_map[i].page_timestamp;
+      page_index = i;
+    }
+  }
+
+  if(page_index == except_page_index)
+    return evict_gamepak_page();
+
+  unmap_gamepak_physical_page(gamepak_memory_map[page_index].physical_index);
+
+  return page_index;
+}
+
+static void prefetch_adjacent_gamepak_page(u32 physical_index, u32 loaded_page_index)
+{
+  u32 next_index = physical_index + 1;
+
+  if(gamepak_ram_pages < 2)
+    return;
+
+  if(next_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
+    return;
+
+  if(gamepak_physical_page_is_mapped(next_index))
+    return;
+
+  map_gamepak_physical_page(next_index,
+   evict_gamepak_page_except(loaded_page_index));
+}
+
+u8 *load_gamepak_page(u32 physical_index)
+{
+  if(physical_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
+    return gamepak_rom;
+
+  u32 page_index = evict_gamepak_page();
+
+  map_gamepak_physical_page(physical_index, page_index);
+  prefetch_adjacent_gamepak_page(physical_index, page_index);
+
+  return gamepak_rom + page_index * GAMEPAK_SWAP_PAGE_SIZE;
 }
 
 void init_memory_gamepak()
