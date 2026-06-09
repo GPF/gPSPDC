@@ -21,6 +21,10 @@
 #include "memory.h"
 #include "zip.h"
 
+#ifdef _arch_dreamcast
+void gpsp_gamepak_load_error(const char *filename);
+#endif
+
 #define GAMEPAK_SWAP_PAGE_SIZE      (32 * 1024)
 #define GAMEPAK_SWAP_PAGE_SHIFT     15
 #define GAMEPAK_ROM_MAP_BASE_INDEX  (0x08000000 >> GAMEPAK_SWAP_PAGE_SHIFT)
@@ -2188,7 +2192,7 @@ u32 load_gamepak(char *name)
   s32 file_size;
   u8 cheats_filename[256];
 
-  if(!strcmp(dot_position, ".zip"))
+  if(dot_position && !strcmp(dot_position, ".zip"))
     file_size = load_file_zip(name);
   else
     file_size = load_gamepak_raw(name);
@@ -3189,7 +3193,11 @@ void load_state(char *savestate_filename)
         }
         else
         {
+#ifdef _arch_dreamcast
+          gpsp_gamepak_load_error((char *)gamepak_filename);
+#else
           quit();
+#endif
         }
 
         return;

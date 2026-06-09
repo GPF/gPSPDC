@@ -239,6 +239,18 @@ void gpsp_audio_init_error(const char *sdl_error)
   lines[2] = suffix;
   gpsp_fatal_error_screen(lines, 3);
 }
+
+void gpsp_dynarec_fatal_error(const char *detail)
+{
+  static const char *prefix = "Dynarec translation failed:";
+  static const char *suffix = "Press Start to exit.";
+  const char *lines[3];
+
+  lines[0] = prefix;
+  lines[1] = detail;
+  lines[2] = suffix;
+  gpsp_fatal_error_screen(lines, 3);
+}
 #endif
 
 int main(int argc, char *argv[])

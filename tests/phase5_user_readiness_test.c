@@ -73,11 +73,43 @@ static void test_dc_fatal_error_contract(void)
   expect_contains("DC ROM buffer error", main_c, "gpsp_no_memory_error");
   expect_contains("DC gamepak load error", main_c, "gpsp_gamepak_load_error");
   expect_contains("DC argv load fix", main_c, "gpsp_gamepak_load_error(argv[1])");
+  expect_contains("DC dynarec fatal error", main_c, "gpsp_dynarec_fatal_error");
 
   if(main_c != NULL)
     free(main_c);
 
   printf("DC fatal error contract: ok\n");
+}
+
+static void test_rom_zip_safety_contract(void)
+{
+  char *memory_c = read_text_file("../memory.c");
+  char *zip_c = read_text_file("../zip.c");
+  char *cpu_threaded_c = read_text_file("../cpu_threaded.c");
+  char *main_h = read_text_file("../main.h");
+
+  expect_contains("extensionless ROM guard", memory_c,
+   "if(dot_position && !strcmp(dot_position, \".zip\"))");
+  expect_contains("savestate ROM load error", memory_c,
+   "gpsp_gamepak_load_error((char *)gamepak_filename)");
+  expect_contains("zip extension guard", zip_c, "if(dot == NULL || dot[1] == '\\0')");
+  expect_contains("zip malloc guard", zip_c, "if(cbuffer == NULL)");
+  expect_contains("zip inflate size check", zip_c,
+   "if(stream.total_out != expected_size)");
+  expect_contains("dynarec fatal decl", main_h, "gpsp_dynarec_fatal_error");
+  expect_contains("dynarec fatal call", cpu_threaded_c,
+   "gpsp_dynarec_fatal_error(buffer)");
+
+  if(memory_c != NULL)
+    free(memory_c);
+  if(zip_c != NULL)
+    free(zip_c);
+  if(cpu_threaded_c != NULL)
+    free(cpu_threaded_c);
+  if(main_h != NULL)
+    free(main_h);
+
+  printf("ROM/ZIP safety contract: ok\n");
 }
 
 static void test_readme_savestate_contract(void)
@@ -112,6 +144,7 @@ int main(void)
   failures = 0;
 
   test_dc_fatal_error_contract();
+  test_rom_zip_safety_contract();
   test_readme_savestate_contract();
   test_input_debug_gating_contract();
 

@@ -21,6 +21,10 @@
 #include "common.h"
 #include "cheats.h"
 
+#ifdef _arch_dreamcast
+void gpsp_dynarec_fatal_error(const char *detail);
+#endif
+
 u8 rom_translation_cache[ROM_TRANSLATION_CACHE_SIZE];
 u8 *rom_translation_ptr = rom_translation_cache;
 
@@ -2825,13 +2829,17 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
       if(translation_recursion_level == 0)                                    \
       {                                                                       \
         char buffer[256];                                                     \
-        sprintf(buffer, "bad jump %x (%x) (%x)\n", pc, reg[REG_PC],           \
+        sprintf(buffer, "bad jump %x (%x) (%x)", pc, reg[REG_PC],             \
          last_instruction);                                                   \
+        printf("%s\n", buffer);                                               \
+#ifdef _arch_dreamcast                                                         \
+        gpsp_dynarec_fatal_error(buffer);                                     \
+#else                                                                          \
         print_string(buffer, 0, 0, 0xFFFF, 0x0000);                           \
-        printf(buffer);                                                       \
         update_screen();                                                      \
         delay_us(5000000);                                                    \
         quit();                                                               \
+#endif                                                                         \
       }                                                                       \
       block_address = (u8 *)(-1);                                             \
       break;                                                                  \
