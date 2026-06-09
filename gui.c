@@ -965,8 +965,13 @@ u32 menu(u16 *original_screen)
     "Right shoulder button on GBA.",
     "Start button on GBA.",
     "Select button on GBA.",
+#ifdef _arch_dreamcast
+    "Opens the in-game pause menu.",
+    "Opens the in-game pause menu.",
+#else
     "Brings up frameskip adjust bar and menu access.",
     "Jumps directly to the menu.",
+#endif
     "Toggles fastforward on/off (don't expect it to do much or anything)",
     "Loads the game state from the current slot.",
     "Saves the game state to the current slot.",
@@ -1255,7 +1260,8 @@ u32 menu(u16 *original_screen)
      update_backup_options, &update_backup_flag, 2,
 #ifdef _arch_dreamcast
      "Determines when in-game save files should be written back to\n"
-     "the VMU or disc. If set to 'automatic' writebacks will occur shortly\n"
+     "the GD-ROM image under /cd/gbaDC/. If set to 'automatic' writebacks\n"
+     "will occur shortly\n"
      "after the game's backup is altered. On 'exit only' it will only be\n"
      "written back when you exit from this menu.\n"
      "Use the latter with extreme care.",

@@ -2,7 +2,7 @@
 
 Record Flycast or Dreamcast results for [HARDWARE_SMOKE_TEST.md](../HARDWARE_SMOKE_TEST.md).
 
-**Host contract tests** (`make -C tests test`): pass on CI — these verify source contracts only, not on-target FPS or large-ROM gameplay.
+**Host contract tests** (`make -C tests test`): pass on CI — these verify source contracts only, not on-target FPS, menu feel, or large-ROM gameplay.
 
 | # | Test | Pass/Fail | Notes |
 |---|------|-----------|-------|

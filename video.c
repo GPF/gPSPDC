@@ -3436,13 +3436,26 @@ void init_video()
 
 
 #endif  
-  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) < 0) {
-                             gpsp_debug_printf("Can't init SDL\n");
-                             return;
-                             }
+  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) < 0)
+  {
+#ifdef _arch_dreamcast
+    gpsp_video_init_error(SDL_GetError());
+#else
+    gpsp_debug_printf("Can't init SDL\n");
+    return;
+#endif
+  }
+
   gpsp_debug_printf("SDL initialized\nSet video mode to %dx%d\n",
    240 * video_scale, 160 * video_scale);
-  screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
+  screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16,
+   SDL_HWSURFACE | SDL_DOUBLEBUF);
+
+#ifdef _arch_dreamcast
+  if(screen == NULL)
+    gpsp_video_init_error(SDL_GetError());
+#endif
+
   SDL_ShowCursor(0);
 }
 

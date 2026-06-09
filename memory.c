@@ -29,9 +29,6 @@ void gpsp_gamepak_load_error(const char *filename);
 #define GAMEPAK_SWAP_PAGE_SHIFT     15
 #define GAMEPAK_ROM_MAP_BASE_INDEX  (0x08000000 >> GAMEPAK_SWAP_PAGE_SHIFT)
 
-u8 bios_rom[1024 * 32];
-u32 bios_read_protect;
-
 u8 *memory_map_read[8 * 1024];
 u32 reg[64];
 u8 *memory_map_write[8 * 1024];
@@ -2047,7 +2044,7 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
 
 #ifdef PSP_BUILD
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
-#elif _arch_dreamcast
+#elif defined(_arch_dreamcast)
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
 #else
   sprintf(config_path, "%s\\%s", main_path, CONFIG_FILENAME);
