@@ -112,7 +112,20 @@ Unified gamepak swap paging in `memory.c`:
 - **CI** — GitHub Actions workflow runs `make -C tests test` on push/PR to `dreamcast`.
 - **Host tests** — `tests/phase6_release_verification_test.c` contract-checks version, menu error path, smoke-test doc, and CI workflow.
 
-**Remaining risks:** manual hardware/Flycast execution of the smoke-test checklist; KOS cross-compile not run in CI.
+**Remaining risks:** manual hardware/Flycast execution of the smoke-test checklist.
+
+---
+
+## Phase 7 — Stable build (P7)
+
+**Status:** Complete
+
+- **KOS cross-compile CI** — `.github/workflows/dreamcast-build.yml` cross-compiles `gdC.elf` in `einsteinx2/dcdev-kos-toolchain:gcc-9` on push/PR to `dreamcast`.
+- **Romdisk placeholder** — `dc/romdisk/` ensures KOS `genromfs` has a source directory in fresh checkouts.
+- **Docker build helper** — `scripts/dc-build.sh` wraps the same container image for local stable builds.
+- **Host tests** — `tests/dc_build_contract_test.c` contract-checks Dreamcast source paths, romdisk layout, and CI workflow.
+
+**Remaining risks:** manual hardware/Flycast execution of the smoke-test checklist; CDI packaging (`dc/dc.sh`) still requires local KOS tools and user-supplied BIOS.
 
 ---
 
@@ -127,6 +140,7 @@ Unified gamepak swap paging in `memory.c`:
 | **4** | Release polish | Small | Cleaner release build ✓ |
 | **5** | User readiness audit | Small | On-screen errors, docs, debug gating ✓ |
 | **6** | Release verification | Small | Version, smoke-test doc, CI, menu errors ✓ |
+| **7** | Stable build | Small | KOS cross-compile CI, romdisk, docker helper ✓ |
 
 ```mermaid
 flowchart TD
@@ -138,6 +152,7 @@ flowchart TD
     D --> G
     G --> H[Phase 5: User readiness audit]
     H --> I[Phase 6: Release verification]
+    I --> J[Phase 7: Stable build CI]
 ```
 
 ---

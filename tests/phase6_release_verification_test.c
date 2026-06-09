@@ -111,12 +111,16 @@ static void test_smoke_test_doc_contract(void)
 
 static void test_ci_contract(void)
 {
-  char *workflow = read_text_file("../.github/workflows/tests.yml");
+  char *host_tests = read_text_file("../.github/workflows/tests.yml");
+  char *dreamcast_build = read_text_file("../.github/workflows/dreamcast-build.yml");
 
-  expect_contains("CI workflow", workflow, "make -C tests test");
+  expect_contains("host CI workflow", host_tests, "make -C tests test");
+  expect_contains("dreamcast CI workflow", dreamcast_build, "gdC.elf");
 
-  if(workflow != NULL)
-    free(workflow);
+  if(host_tests != NULL)
+    free(host_tests);
+  if(dreamcast_build != NULL)
+    free(dreamcast_build);
 
   printf("CI contract: ok\n");
 }

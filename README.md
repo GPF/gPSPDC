@@ -77,6 +77,12 @@ cd dc
 make
 ```
 
+With Docker (same image as CI):
+
+```sh
+./scripts/dc-build.sh
+```
+
 This produces `gdC.elf`. To build a bootable CDI:
 
 ```sh
