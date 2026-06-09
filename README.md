@@ -106,6 +106,18 @@ Requires host `gcc`, SDL 1.x development libraries, and `zlib`.
 make -C tests test
 ```
 
+## Large ROMs on stock Dreamcast
+
+Commercial GBA titles can be up to 32 MB. gPSPDC loads them from GD-ROM under `/cd/gbaDC/` using **32 KB demand paging** when the ROM is larger than the resident buffer.
+
+| Topic | Detail |
+|-------|--------|
+| Resident buffer | Tries **16 → 12 → 8 → 4 MB** at startup (`memory.c`); on a stock 16 MB Dreamcast, expect **8 MB or 4 MB** after KOS, SDL, and translation caches claim RAM. |
+| Uncompressed ROMs | Use `.gba` or `.bin` for titles larger than the resident buffer. Paging reads from the open disc file during play. |
+| Zip ROMs | The first `.gba`/`.bin` inside a `.zip` must fit **entirely** in the resident buffer. Larger zipped games will not load — extract to `.gba` on the disc instead. |
+| Full speed | Paging from GD-ROM costs seek/read time on each 32 KB miss. Adjacent-page prefetch reduces sequential misses; titles still need `game_config.txt` idle-loop entries for dynarec speed. Use frameskip if needed. |
+| Validation | See [HARDWARE_SMOKE_TEST.md](HARDWARE_SMOKE_TEST.md) test **#9** (large ROM title screen) before relying on a burned CDI. |
+
 ## Known limitations
 
 - **VRAM self-modifying code** — executable code written to VRAM is not supported. Games that rely on this may misbehave; do not disable SMC checks globally.
