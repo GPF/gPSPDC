@@ -107,6 +107,8 @@ void sound_timer(fixed16_16 frequency_step, u32 channel)
   if(!sound_initialized)
     return;
 
+  SDL_LockMutex(sound_mutex);
+
   direct_sound_struct *ds = direct_sound_channel + channel;
 
   fixed16_16 fifo_fractional = ds->fifo_fractional;
@@ -160,6 +162,8 @@ void sound_timer(fixed16_16 frequency_step, u32 channel)
     if(dma[2].direct_sound_channel == channel)
       gpsp_dma_transfer(dma + 2);
   }
+
+  SDL_UnlockMutex(sound_mutex);
 }
 
 void sound_reset_fifo(u32 channel)
@@ -680,6 +684,9 @@ void reset_sound()
   gbc_sound_struct *gs = gbc_sound_channel;
   u32 i;
 
+  if(sound_initialized)
+    SDL_LockMutex(sound_mutex);
+
   sound_on = 0;
   sound_buffer_base = 0;
   sound_last_cpu_ticks = 0;
@@ -711,6 +718,9 @@ void reset_sound()
     gs->sample_data = square_pattern_duty[2];
     gs->active_flag = 0;
   }
+
+  if(sound_initialized)
+    SDL_UnlockMutex(sound_mutex);
 }
 
 void sound_exit()

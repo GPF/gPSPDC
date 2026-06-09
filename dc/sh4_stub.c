@@ -18,6 +18,7 @@ extern cpu_alert_type write_memory16(u32 address, u16 value);
 extern cpu_alert_type write_memory32(u32 address, u32 value);
 extern void flush_translation_cache_ram();
 extern u32 step_debug(u32 pc, u32 cycles);
+extern void gpsp_dynarec_fatal_error(const char *detail);
 
 static inline void collapse_flags(void)
 {
@@ -271,6 +272,14 @@ u32 function_cc execute_arm_translate(u32 cycles)
 
   extract_flags_local();
   target = block_lookup_address_arm(pc);
+
+  if(target == NULL)
+  {
+    char buffer[64];
+    sprintf(buffer, "null translation at %08x", pc);
+    gpsp_dynarec_fatal_error(buffer);
+    return cycles;
+  }
 
   __asm__ __volatile__(
     "mov.l %[regptr], r12\n\t"

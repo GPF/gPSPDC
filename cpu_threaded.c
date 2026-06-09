@@ -2705,6 +2705,19 @@ u32 bios_block_tag_top = 0x0101;
     s32 translation_result;                                                   \
                                                                               \
     redo:                                                                     \
+    translation_redo_attempts++;                                              \
+    if(translation_redo_attempts > 32)                                        \
+    {                                                                         \
+      if(translation_recursion_level == 0)                                    \
+      {                                                                       \
+        char buffer[64];                                                      \
+        sprintf(buffer, "translation retry limit at %x", pc);                \
+#ifdef _arch_dreamcast                                                         \
+        gpsp_dynarec_fatal_error(buffer);                                     \
+#endif                                                                         \
+      }                                                                       \
+      return NULL;                                                            \
+    }                                                                         \
                                                                               \
     translation_recursion_level++;                                            \
     block_address = mem_type##_translation_ptr + block_prologue_size;         \
@@ -2726,8 +2739,11 @@ u32 bios_block_tag_top = 0x0101;
     }                                                                         \
                                                                               \
     if(translation_recursion_level == 0)                                      \
+    {                                                                         \
+      translation_redo_attempts = 0;                                          \
       translate_invalidate_dcache_region(mem_type##_translation_cache,        \
        mem_type##_translation_ptr);                                           \
+    }                                                                         \
   }                                                                           \
   else                                                                        \
   {                                                                           \
@@ -2736,6 +2752,7 @@ u32 bios_block_tag_top = 0x0101;
 
 u32 translation_recursion_level = 0;
 u32 translation_flush_count = 0;
+u32 translation_redo_attempts = 0;
 
 #define block_lookup_address_builder(type)                                    \
 u8 function_cc *block_lookup_address_##type(u32 pc)                           \
@@ -3355,6 +3372,9 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     else                                                                      \
     {                                                                         \
       /* External branch, save for later */                                   \
+      if(external_block_exit_position >= MAX_EXITS)                           \
+        return -1;                                                            \
+                                                                              \
       external_block_exits[external_block_exit_position].branch_target =      \
        branch_target;                                                         \
       external_block_exits[external_block_exit_position].branch_source =      \

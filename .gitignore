@@ -17,3 +17,4 @@ tests/phase5_user_readiness_test
 tests/phase6_release_verification_test
 tests/dc_build_contract_test
 tests/phase8_dreamcast_polish_test
+tests/phase9_stability_test

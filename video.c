@@ -3660,6 +3660,9 @@ u16 *copy_screen()
   u32 y, x;
   u16 *dest = copy;
 
+  if(copy == NULL)
+    return NULL;
+
   for(y = 0; y < 160; y++)
   {
     u16 *src_line = src + (y * pitch);

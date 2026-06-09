@@ -454,6 +454,10 @@ static u32 dc_process_special_button(u32 button_id)
     case BUTTON_ID_MENU:
     {
       u16 *screen_copy = copy_screen();
+
+      if(screen_copy == NULL)
+        return 0;
+
       u32 ret_val = menu(screen_copy);
       free(screen_copy);
 
@@ -473,10 +477,15 @@ static u32 dc_process_special_button(u32 button_id)
     {
       u8 current_savestate_filename[512];
       u16 *current_screen = copy_screen();
-      get_savestate_filename_noshot(savestate_slot,
-       current_savestate_filename);
-      save_state(current_savestate_filename, current_screen);
-      free(current_screen);
+
+      if(current_screen != NULL)
+      {
+        get_savestate_filename_noshot(savestate_slot,
+         current_savestate_filename);
+        save_state(current_savestate_filename, current_screen);
+        free(current_screen);
+      }
+
       return 0;
     }
 
@@ -987,6 +996,10 @@ u32 update_input()
         if(event.key.keysym.sym == SDLK_BACKSPACE)
         {
           u16 *screen_copy = copy_screen();
+
+          if(screen_copy == NULL)
+            return 0;
+
           u32 ret_val = menu(screen_copy);
           free(screen_copy);
 
@@ -1035,10 +1048,14 @@ u32 update_input()
         {
           u8 current_savestate_filename[512];
           u16 *current_screen = copy_screen();
-          get_savestate_filename_noshot(savestate_slot,
-           current_savestate_filename);
-          save_state(current_savestate_filename, current_screen);
-          free(current_screen);
+
+          if(current_screen != NULL)
+          {
+            get_savestate_filename_noshot(savestate_slot,
+             current_savestate_filename);
+            save_state(current_savestate_filename, current_screen);
+            free(current_screen);
+          }
         }
         else
 
