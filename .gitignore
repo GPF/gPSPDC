@@ -4,3 +4,13 @@ dc/gdC.elf
 dc/romdisk.img
 dc/romdisk.o
 *.bin
+tests/phase1_helpers_test
+tests/sh4_emit_encoding_test
+tests/sh4_integration_contract_test
+tests/phase2_ldm_stm_test
+tests/phase3_memory_test
+tests/phase4_cheats_test
+tests/phase5_user_readiness_test
+tests/phase6_release_verification_test
+tests/dc_build_contract_test
+tests/phase8_dreamcast_polish_test

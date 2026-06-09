@@ -131,6 +131,7 @@ void function_cc execute_store_u8_no_smc(u32 address, u32 source);
 void function_cc execute_store_u16_no_smc(u32 address, u32 source);
 void function_cc execute_store_u32_no_smc(u32 address, u32 source);
 u32 function_cc execute_arm_translate(u32 cycles);
+void function_cc execute_arm_block_memory(u32 opcode, u32 insn_pc);
 void init_translater();
 void cpu_write_mem_savestate(file_tag_type savestate_file);
 void cpu_read_savestate(file_tag_type savestate_file);

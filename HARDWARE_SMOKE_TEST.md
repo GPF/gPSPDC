@@ -16,6 +16,8 @@ Manual verification checklist for Dreamcast hardware or [Flycast](https://github
 | 2 | Boot **with** BIOS but **no** ROMs in `/cd/gbaDC/` | ROM browser opens; shows "No game loaded yet." and version `gPSPDC 0.9.1-dc` |
 | 3 | Attempt to load a **missing** ROM from CLI | On-screen "Could not load game ROM:" with filename; waits for Start |
 | 4 | Select a **corrupt or invalid** ROM from the menu | Same on-screen load error as CLI (not a silent exit) |
+| 14 | Boot on a system with **very low RAM** (or simulate ROM map alloc failure) | On-screen "could not allocate ROM buffer" message; waits for Start |
+| 15 | Trigger a **dynarec translation failure** (bad jump / unsupported PC) | On-screen "Dynarec translation failed:" message with PC details; waits for Start |
 
 ## Core gameplay
 

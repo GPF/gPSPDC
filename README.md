@@ -90,11 +90,27 @@ This produces `gdC.elf`. To build a bootable CDI:
 ./dc.sh
 ```
 
+### Host SDL build (debugging)
+
+```sh
+make -C x86
+# or from the repo root:
+make
+```
+
+Requires host `gcc`, SDL 1.x development libraries, and `zlib`.
+
 ### Host tests
 
 ```sh
 make -C tests test
 ```
+
+## Known limitations
+
+- **VRAM self-modifying code** — executable code written to VRAM is not supported. Games that rely on this may misbehave; do not disable SMC checks globally.
+- **Cheat hooks** — master-hook addresses are validated to ROM/EWRAM/IWRAM ranges, but malformed cheat codes can still corrupt game state or crash.
+- **Hardware validation** — run [HARDWARE_SMOKE_TEST.md](HARDWARE_SMOKE_TEST.md) on Flycast or real hardware before release.
 
 ## Configuration
 
@@ -113,7 +129,7 @@ gameshark_v3 Infinite Health
 995fa0d9 0c6720d2
 ```
 
-Enable cheats from the in-game **Cheats/Misc** menu. Gameshark v1/v3 write codes, ROM patches, button-gated codes, master-hook addresses, IF/conditional codes, and PAR v3 conditionals are supported. Bad codes may still crash a game.
+Enable cheats from the in-game **Cheats/Misc** menu. Gameshark v1/v3 write codes, ROM patches, button-gated codes, master-hook addresses, IF/conditional codes, and PAR v3 conditionals are supported. Invalid hook PCs outside ROM/RAM are ignored; other bad codes may still crash a game.
 
 ## Savestates
 

@@ -71,6 +71,9 @@ static void test_audio_contract(void)
    "direct_sound_channel + channel");
   expect_contains("dreamcast audio buffer", sound_c,
    "defined(_arch_dreamcast)");
+  expect_contains("sound reset fifo channel", sound_c,
+   "direct_sound_channel + channel");
+  expect_contains("audio off null copy", sound_c, "sound_copy_null");
   expect_contains("audio init error decl", main_h, "gpsp_audio_init_error");
 
   if(sound_c != NULL)
@@ -90,6 +93,7 @@ static void test_video_contract(void)
   expect_contains("dreamcast vblank wait", video_c,
    "SDL_DC_VerticalWait(SDL_FALSE)");
   expect_contains("obj priority bounds", video_c, "current_count < 128");
+  expect_contains("blit memcpy path", video_c, "blit_to_screen_pitch_copy");
 
   if(video_c != NULL)
     free(video_c);
@@ -108,6 +112,10 @@ static void test_menu_contract(void)
   expect_contains("savestate slot sync", gui_c, "menu_sync_savestate_slot");
   expect_contains("dreamcast menu input delay", input_c,
    "#ifndef _arch_dreamcast");
+  expect_contains("dreamcast menu exit label", gui_c, "\"Exit gPSPDC\"");
+  expect_contains("dreamcast gamepad labels", gui_c, "\"A button     \"");
+  expect_contains("dreamcast scaling help", gui_c,
+   "displayed on Dreamcast");
 
   if(gui_c != NULL)
     free(gui_c);
@@ -117,19 +125,39 @@ static void test_menu_contract(void)
   printf("menu contract: ok\n");
 }
 
+static void test_phase8_doc_contract(void)
+{
+  char *doc = read_text_file("../HIGH_IMPACT_FIXES.md");
+
+  expect_contains("phase 8 doc", doc, "Phase 8");
+  expect_contains("phase 8 audio", doc, "sound_reset_fifo");
+  expect_contains("phase 8 menu", doc, "Menu performance");
+
+  if(doc != NULL)
+    free(doc);
+
+  printf("phase 8 doc contract: ok\n");
+}
+
 static void test_build_contract(void)
 {
   char *makefile = read_text_file("../dc/Makefile");
   char *build_script = read_text_file("../scripts/dc-build.sh");
+  char *root_makefile = read_text_file("../Makefile");
 
   expect_contains("dc makefile VPATH", makefile, "VPATH += .. .");
   expect_contains("pinned docker image", build_script,
    "gcc-9__v2.0.0");
+  expect_contains("safe dc blit default", makefile, "GPSP_DC_BLIT_MEMCPY");
+  expect_contains("root makefile delegates x86", root_makefile,
+   "$(MAKE) -C x86");
 
   if(makefile != NULL)
     free(makefile);
   if(build_script != NULL)
     free(build_script);
+  if(root_makefile != NULL)
+    free(root_makefile);
 
   printf("build polish contract: ok\n");
 }
@@ -141,6 +169,7 @@ int main(void)
   test_audio_contract();
   test_video_contract();
   test_menu_contract();
+  test_phase8_doc_contract();
   test_build_contract();
 
   if(failures != 0)

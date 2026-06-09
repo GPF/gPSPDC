@@ -133,9 +133,29 @@ static void cheat_flush_translation_caches(void)
   flush_translation_cache_bios();
 }
 
+static u32 cheat_hook_pc_valid(u32 pcaddr)
+{
+  if(pcaddr & 0x01)
+    return 0;
+
+  if((pcaddr & 0xFF000000) == 0x08000000)
+    return 1;
+
+  if((pcaddr & 0xFF000000) == 0x02000000)
+    return 1;
+
+  if((pcaddr & 0xFFFF0000) == 0x03000000)
+    return 1;
+
+  return 0;
+}
+
 static void cheat_add_master_hook(u32 pcaddr)
 {
   u32 i;
+
+  if(!cheat_hook_pc_valid(pcaddr))
+    return;
 
   for(i = 0; i < cheat_num_master_hooks; i++)
   {

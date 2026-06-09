@@ -67,7 +67,7 @@ static void test_version_contract(void)
   char *common_h = read_text_file("../common.h");
   char *gui_c = read_text_file("../gui.c");
 
-  expect_contains("version define", common_h, "#define GPSPDC_VERSION");
+  expect_contains("version define", common_h, "#define GPSPDC_VERSION \"0.9.1-dc\"");
   expect_contains("version in menu", gui_c, "\"gPSPDC \" GPSPDC_VERSION");
 
   if(common_h != NULL)
@@ -104,25 +104,15 @@ static void test_smoke_test_doc_contract(void)
   expect_contains("smoke test menu load", doc, "ROM from the menu");
   expect_contains("smoke test menu responsiveness", doc,
    "Menu and UI responsiveness");
+  expect_contains("smoke test rom buffer fatal", doc,
+   "could not allocate ROM buffer");
+  expect_contains("smoke test dynarec fatal", doc,
+   "Dynarec translation failed");
 
   if(doc != NULL)
     free(doc);
 
   printf("smoke test doc contract: ok\n");
-}
-
-static void test_phase8_doc_contract(void)
-{
-  char *doc = read_text_file("../HIGH_IMPACT_FIXES.md");
-
-  expect_contains("phase 8 doc", doc, "Phase 8");
-  expect_contains("phase 8 audio", doc, "sound_reset_fifo");
-  expect_contains("phase 8 menu", doc, "Menu performance");
-
-  if(doc != NULL)
-    free(doc);
-
-  printf("phase 8 doc contract: ok\n");
 }
 
 static void test_ci_contract(void)
@@ -132,6 +122,8 @@ static void test_ci_contract(void)
 
   expect_contains("host CI workflow", host_tests, "make -C tests test");
   expect_contains("dreamcast CI workflow", dreamcast_build, "gdC.elf");
+  expect_contains("dreamcast CI build script", dreamcast_build,
+   "./scripts/dc-build.sh");
 
   if(host_tests != NULL)
     free(host_tests);
@@ -148,7 +140,6 @@ int main(void)
   test_version_contract();
   test_menu_load_error_contract();
   test_smoke_test_doc_contract();
-  test_phase8_doc_contract();
   test_ci_contract();
 
   if(failures != 0)

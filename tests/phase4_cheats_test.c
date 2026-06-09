@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 static int test_gs3_inner_opcode(void)
 {
@@ -154,6 +156,73 @@ static int test_deadface_marker(void)
   return 0;
 }
 
+static char *read_text_file(const char *path)
+{
+  FILE *fp = fopen(path, "rb");
+  long size;
+  char *buffer;
+
+  if(fp == NULL)
+    return NULL;
+
+  if(fseek(fp, 0, SEEK_END) != 0 || (size = ftell(fp)) < 0 ||
+   fseek(fp, 0, SEEK_SET) != 0)
+  {
+    fclose(fp);
+    return NULL;
+  }
+
+  buffer = (char *)malloc((size_t)size + 1);
+  if(buffer == NULL)
+  {
+    fclose(fp);
+    return NULL;
+  }
+
+  if(fread(buffer, 1, (size_t)size, fp) != (size_t)size)
+  {
+    free(buffer);
+    fclose(fp);
+    return NULL;
+  }
+
+  buffer[size] = '\0';
+  fclose(fp);
+  return buffer;
+}
+
+static int test_cheats_source_contract(void)
+{
+  char *cheats_c = read_text_file("../cheats.c");
+  char *threaded = read_text_file("../cpu_threaded.c");
+
+  if(cheats_c == NULL || threaded == NULL)
+  {
+    printf("cheats source contract failed: could not read sources\n");
+    free(cheats_c);
+    free(threaded);
+    return 1;
+  }
+
+  if(strstr(cheats_c, "case 0x6:") == NULL ||
+   strstr(cheats_c, "case 0x8:") == NULL ||
+   strstr(cheats_c, "cheat_add_master_hook") == NULL ||
+   strstr(cheats_c, "cheat_hook_pc_valid") == NULL ||
+   strstr(cheats_c, "DEADFACE") == NULL ||
+   strstr(threaded, "cheat_pc_is_hook(pc)") == NULL)
+  {
+    printf("cheats source contract failed: missing implementation markers\n");
+    free(cheats_c);
+    free(threaded);
+    return 1;
+  }
+
+  free(cheats_c);
+  free(threaded);
+  printf("cheats source contract: ok\n");
+  return 0;
+}
+
 int main(void)
 {
   int failed = 0;
@@ -167,6 +236,7 @@ int main(void)
   failed |= test_par3_slowdown_decode();
   failed |= test_multi_hook_slots();
   failed |= test_deadface_marker();
+  failed |= test_cheats_source_contract();
 
   return failed ? 1 : 0;
 }

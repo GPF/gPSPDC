@@ -572,7 +572,9 @@ u32 update_input()
 
         if(event.key.keysym.sym == SDLK_F3)
         {
+#ifdef GPSP_DEBUG
           dump_translation_cache();
+#endif
         }
         else
 

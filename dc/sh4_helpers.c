@@ -530,6 +530,97 @@ void function_cc execute_swi(u32 pc)
   reg[REG_CPSR] = (reg[REG_CPSR] & ~0x3F) | 0x13;
   set_cpu_mode(MODE_SUPERVISOR);
 }
+static u32 block_memory_reg_count(u32 reg_list)
+{
+  return bit_count[reg_list >> 8] + bit_count[reg_list & 0xFF];
+}
+
+static u32 block_memory_user_bank(u32 reg_num, u32 s_bit)
+{
+  return s_bit && reg_num >= 8 && reg_num <= 14 && reg[CPU_MODE] != MODE_USER;
+}
+
+void function_cc execute_arm_block_memory(u32 opcode, u32 insn_pc)
+{
+  u32 rn = (opcode >> 16) & 0x0F;
+  u32 reg_list = opcode & 0xFFFF;
+  u32 load = (opcode >> 20) & 1;
+  u32 writeback = (opcode >> 21) & 1;
+  u32 s_bit = (opcode >> 22) & 1;
+  u32 up = (opcode >> 23) & 1;
+  u32 pre = (opcode >> 24) & 1;
+  u32 base = reg[rn];
+  u32 count = block_memory_reg_count(reg_list);
+  u32 address;
+  u32 i;
+
+  if(pre)
+  {
+    if(up)
+      address = (base + 4) & 0xFFFFFFFC;
+    else
+      address = (base - (count * 4)) & 0xFFFFFFFC;
+  }
+  else
+  {
+    if(up)
+      address = base & 0xFFFFFFFC;
+    else
+      address = (base - (count * 4) + 4) & 0xFFFFFFFC;
+  }
+
+  for(i = 0; i < 15; i++)
+  {
+    if((reg_list >> i) & 0x01)
+    {
+      if(load)
+      {
+        u32 value = execute_aligned_load32(address);
+
+        if(block_memory_user_bank(i, s_bit))
+          reg_mode[MODE_USER][i - 8] = value;
+        else
+          reg[i] = value;
+      }
+      else
+      {
+        u32 value = block_memory_user_bank(i, s_bit) ?
+         reg_mode[MODE_USER][i - 8] : reg[i];
+
+        execute_aligned_store32(address, value);
+      }
+
+      address += 4;
+    }
+  }
+
+  if(writeback)
+  {
+    if(!(load && ((reg_list >> rn) & 0x01)))
+    {
+      if(up)
+        reg[rn] = base + (count * 4);
+      else
+        reg[rn] = base - (count * 4);
+    }
+  }
+
+  if(reg_list & 0x8000)
+  {
+    if(load)
+    {
+      u32 value = execute_aligned_load32(address);
+
+      reg[REG_PC] = value & ~0x01;
+      reg[CHANGED_PC_STATUS] = 1;
+    }
+    else
+    {
+      execute_aligned_store32(address, insn_pc + 4);
+    }
+  }
+}
+
 void swi_hle_div()
 {
   s32 dividend = (s32)reg[0];

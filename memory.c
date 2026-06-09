@@ -21,6 +21,10 @@
 #include "memory.h"
 #include "zip.h"
 
+#ifdef _arch_dreamcast
+void gpsp_gamepak_load_error(const char *filename);
+#endif
+
 #define GAMEPAK_SWAP_PAGE_SIZE      (32 * 1024)
 #define GAMEPAK_SWAP_PAGE_SHIFT     15
 #define GAMEPAK_ROM_MAP_BASE_INDEX  (0x08000000 >> GAMEPAK_SWAP_PAGE_SHIFT)
@@ -2188,7 +2192,7 @@ u32 load_gamepak(char *name)
   s32 file_size;
   u8 cheats_filename[256];
 
-  if(!strcmp(dot_position, ".zip"))
+  if(dot_position && !strcmp(dot_position, ".zip"))
     file_size = load_file_zip(name);
   else
     file_size = load_gamepak_raw(name);
@@ -2950,7 +2954,7 @@ void init_memory_gamepak()
   if(gamepak_size > gamepak_ram_buffer_size)
   {
     // Large ROMs get special treatment because they
-    // can't fit into the 16MB ROM buffer.
+    // can't fit into the resident ROM buffer.
     u32 i;
     for(i = 0; i < gamepak_ram_pages; i++)
     {
@@ -3025,6 +3029,12 @@ void init_gamepak_buffer()
     gamepak_ram_pages = 1;
 
   gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) * gamepak_ram_pages);
+  if(gamepak_memory_map == NULL)
+  {
+    free(gamepak_rom);
+    gamepak_rom = NULL;
+    gamepak_ram_pages = 0;
+  }
 }
 
 void init_memory()
@@ -3189,7 +3199,11 @@ void load_state(char *savestate_filename)
         }
         else
         {
+#ifdef _arch_dreamcast
+          gpsp_gamepak_load_error((char *)gamepak_filename);
+#else
           quit();
+#endif
         }
 
         return;
