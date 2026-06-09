@@ -149,12 +149,17 @@ static void test_sh4_psr_store_contract(void)
   if(text == NULL)
     return;
 
-  expect_contains("cpsr store finish", text, "#define arm_psr_store_finish(cpsr)");
+  expect_contains("cpsr store finish", text, "#define arm_psr_store_finish_cpsr()");
+  expect_contains("spsr store finish", text, "#define arm_psr_store_finish_spsr()");
   expect_contains("cpsr irq branch postamble", text,
    "#define arm_psr_store_cpsr_post()");
   expect_contains("cpsr store pc arg", text, "generate_load_pc(a2, pc);");
   expect_contains("cpsr irq indirect branch", text,
    "generate_indirect_branch_arm();");
+  expect_count("duplicate arm_psr_store_finish macro", text,
+   "#define arm_psr_store_finish(", 0);
+  expect_contains("dynarec block memory helper call", text,
+   "generate_function_call(execute_arm_block_memory)");
 
   free(text);
   if(failures == failures_before)

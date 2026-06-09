@@ -93,22 +93,6 @@ static void test_spsr_restore_irq_return(void)
   printf("spsr restore irq return: ok\n");
 }
 
-static void test_gamepak_page_math(void)
-{
-  const u32 page_size = 32 * 1024;
-  const u32 buffer_16mb = 16 * 1024 * 1024;
-  u32 pages = buffer_16mb / page_size;
-
-  if(pages != 512)
-  {
-    printf("gamepak page count failed: %u\n", pages);
-    failures++;
-    return;
-  }
-
-  printf("gamepak page math: ok\n");
-}
-
 int main(void)
 {
   failures = 0;
@@ -116,7 +100,6 @@ int main(void)
   test_swi_hle_div();
   test_sh4_irq_dispatch_logic();
   test_spsr_restore_irq_return();
-  test_gamepak_page_math();
 
   if(failures != 0)
   {

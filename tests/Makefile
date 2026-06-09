@@ -4,11 +4,14 @@ CFLAGS ?= -Wall -Wextra -std=c99
 .PHONY: test clean
 
 test: phase1_helpers_test sh4_emit_encoding_test sh4_integration_contract_test \
-	phase4_cheats_test phase5_user_readiness_test phase6_release_verification_test \
+	phase2_ldm_stm_test phase3_memory_test phase4_cheats_test \
+	phase5_user_readiness_test phase6_release_verification_test \
 	dc_build_contract_test phase8_dreamcast_polish_test
 	./phase1_helpers_test
 	./sh4_emit_encoding_test
 	./sh4_integration_contract_test
+	./phase2_ldm_stm_test
+	./phase3_memory_test
 	./phase4_cheats_test
 	./phase5_user_readiness_test
 	./phase6_release_verification_test
@@ -22,6 +25,12 @@ sh4_emit_encoding_test: sh4_emit_encoding_test.c
 	$(CC) $(CFLAGS) -I.. -o $@ $<
 
 sh4_integration_contract_test: sh4_integration_contract_test.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+phase2_ldm_stm_test: phase2_ldm_stm_test.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+phase3_memory_test: phase3_memory_test.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 phase4_cheats_test: phase4_cheats_test.c
@@ -41,6 +50,7 @@ phase8_dreamcast_polish_test: phase8_dreamcast_polish_test.c
 
 clean:
 	rm -f phase1_helpers_test sh4_emit_encoding_test \
-		sh4_integration_contract_test phase4_cheats_test \
-		phase5_user_readiness_test phase6_release_verification_test \
-		dc_build_contract_test phase8_dreamcast_polish_test
+		sh4_integration_contract_test phase2_ldm_stm_test phase3_memory_test \
+		phase4_cheats_test phase5_user_readiness_test \
+		phase6_release_verification_test dc_build_contract_test \
+		phase8_dreamcast_polish_test

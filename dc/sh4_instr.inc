@@ -530,18 +530,18 @@
     generate_branch_patch_conditional(_skip_irq, translation_ptr);            \
   } while(0)                                                                  \
 
-#define arm_psr_store_finish(cpsr)                                            \
+#define arm_psr_store_finish_cpsr()                                           \
   generate_load_pc(a2, pc);                                                   \
   generate_function_call(execute_store_cpsr);                                 \
   arm_psr_store_cpsr_post()                                                   \
 
-#define arm_psr_store_finish(spsr)                                            \
+#define arm_psr_store_finish_spsr()                                           \
   generate_function_call(execute_store_spsr)                                  \
 
 #define arm_psr_store(op_type, psr_reg)                                       \
   arm_psr_load_new_##op_type();                                               \
   generate_load_imm(a1, psr_masks[psr_field]);                                \
-  arm_psr_store_finish(psr_reg)                                               \
+  arm_psr_store_finish_##psr_reg()                                            \
 
 #define arm_psr(op_type, transfer_type, psr_reg)                              \
 {                                                                             \
@@ -694,69 +694,21 @@
 #define sprint_yes(access_type, pre_op, post_op, wb)                          \
   /* printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb)*/   \
 
-#define arm_block_writeback_yes(access_type)                                  \
-  generate_store_reg(a0, rn)                                                  \
-
-#define arm_block_writeback_no(access_type)                                   \
-
-#define arm_block_memory_load()                                               \
-  generate_function_call(execute_aligned_load32);                             \
-  generate_store_reg(rv, i)                                                   \
-
-#define arm_block_memory_store()                                              \
-  generate_load_reg_pc(a1, i, 8);                                             \
-  generate_function_call(execute_aligned_store32)                             \
-
-#define arm_block_memory_final_load()                                         \
-  arm_block_memory_load()                                                     \
-
-#define arm_block_memory_final_store()                                        \
-  generate_load_reg_pc(a1, i, 12);                                            \
-  generate_load_pc(a2, (pc + 4));                                             \
-  generate_function_call(execute_store_u32)                                   \
-
-#define arm_block_memory_adjust_pc_store()                                    \
-
-#define arm_block_memory_adjust_pc_load()                                     \
+#define arm_block_memory_branch_pc_load()                                     \
   if(reg_list & 0x8000)                                                       \
   {                                                                           \
     generate_mov(a0, rv);                                                     \
     generate_indirect_branch_arm();                                           \
   }                                                                           \
 
+#define arm_block_memory_branch_pc_store()                                    \
+
 #define arm_block_memory(access_type, pre_op, post_op, wb, s_bit)             \
 {                                                                             \
-  arm_decode_block_trans();                                                   \
-  u32 i;                                                                      \
-  u32 offset = 0;                                                             \
-                                                                              \
-  generate_load_reg(s0, rn);                                                  \
-  generate_and_imm(s0, ~0x03);                                                \
-  arm_block_address_preadjust_##pre_op();                                     \
-  generate_mov(a0, s0);                                                       \
-  arm_block_address_postadjust_##post_op();                                   \
-  arm_block_writeback_##wb(access_type);                                      \
-                                                                              \
-  sprint_##s_bit(access_type, pre_op, post_op, wb);                           \
-                                                                              \
-  for(i = 0; i < 16; i++)                                                     \
-  {                                                                           \
-    if((reg_list >> i) & 0x01)                                                \
-    {                                                                         \
-      generate_add_reg_reg_imm(a0, s0, offset)                                \
-      if(reg_list & ~((2 << i) - 1))                                          \
-      {                                                                       \
-        arm_block_memory_##access_type();                                     \
-        offset += 4;                                                          \
-      }                                                                       \
-      else                                                                    \
-      {                                                                       \
-        arm_block_memory_final_##access_type();                               \
-      }                                                                       \
-    }                                                                         \
-  }                                                                           \
-                                                                              \
-  arm_block_memory_adjust_pc_##access_type();                                 \
+  generate_load_imm(a0, opcode);                                              \
+  generate_load_pc(a1, pc);                                                   \
+  generate_function_call(execute_arm_block_memory);                           \
+  arm_block_memory_branch_pc_##access_type();                                 \
 }                                                                             \
 
 #define arm_swap(type)                                                        \

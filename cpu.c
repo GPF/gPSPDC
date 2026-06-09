@@ -918,7 +918,7 @@ const u32 psr_masks[16] =
 #define sprint_no(access_type, pre_op, post_op, wb)                           \
 
 #define sprint_yes(access_type, pre_op, post_op, wb)                          \
-  printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb)       \
+  gpsp_debug_printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb) \
 
 #define arm_block_memory_user_bank_yes(reg_num)                               \
   (((reg_num) >= 8) && ((reg_num) <= 14) && (reg[CPU_MODE] != MODE_USER))     \

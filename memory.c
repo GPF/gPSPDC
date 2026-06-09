@@ -2954,7 +2954,7 @@ void init_memory_gamepak()
   if(gamepak_size > gamepak_ram_buffer_size)
   {
     // Large ROMs get special treatment because they
-    // can't fit into the 16MB ROM buffer.
+    // can't fit into the resident ROM buffer.
     u32 i;
     for(i = 0; i < gamepak_ram_pages; i++)
     {
@@ -3029,6 +3029,12 @@ void init_gamepak_buffer()
     gamepak_ram_pages = 1;
 
   gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) * gamepak_ram_pages);
+  if(gamepak_memory_map == NULL)
+  {
+    free(gamepak_rom);
+    gamepak_rom = NULL;
+    gamepak_ram_pages = 0;
+  }
 }
 
 void init_memory()

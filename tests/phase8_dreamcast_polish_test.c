@@ -121,6 +121,20 @@ static void test_menu_contract(void)
   printf("menu contract: ok\n");
 }
 
+static void test_phase8_doc_contract(void)
+{
+  char *doc = read_text_file("../HIGH_IMPACT_FIXES.md");
+
+  expect_contains("phase 8 doc", doc, "Phase 8");
+  expect_contains("phase 8 audio", doc, "sound_reset_fifo");
+  expect_contains("phase 8 menu", doc, "Menu performance");
+
+  if(doc != NULL)
+    free(doc);
+
+  printf("phase 8 doc contract: ok\n");
+}
+
 static void test_build_contract(void)
 {
   char *makefile = read_text_file("../dc/Makefile");
@@ -146,6 +160,7 @@ int main(void)
   test_audio_contract();
   test_video_contract();
   test_menu_contract();
+  test_phase8_doc_contract();
   test_build_contract();
 
   if(failures != 0)
