@@ -32,6 +32,15 @@ Manual verification checklist for Dreamcast hardware or [Flycast](https://github
 |---|------|-----------------|
 | 9 | Load a ROM larger than the resident buffer (e.g. >8 MB) | Game loads via swap paging; no crash on title screen |
 
+## Menu and UI responsiveness
+
+| # | Test | Expected result |
+|---|------|-----------------|
+| 10 | Open in-game menu and navigate up/down | Highlight moves immediately; no ~30 ms input lag |
+| 11 | Hold direction on menu without changing selection | CPU use stays low (no full redraw every frame) |
+| 12 | Open savestate submenu, change slot left/right | Thumbnail updates after slot change; no multi-second stall per press |
+| 13 | Open ROM browser on `/cd/gbaDC/` | Directory listing appears without long freeze; navigation feels responsive |
+
 ## Regression notes
 
 Record any failures with: emulator or hardware revision, disc layout, ROM title, and serial log snippet. File issues against the `dreamcast` branch.

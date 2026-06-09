@@ -63,6 +63,19 @@ static void expect_contains(const char *name, const char *text,
   }
 }
 
+static void expect_not_contains(const char *name, const char *text,
+ const char *needle)
+{
+  if(text == NULL)
+    return;
+
+  if(strstr(text, needle) != NULL)
+  {
+    printf("%s failed: unexpected `%s`\n", name, needle);
+    failures++;
+  }
+}
+
 static void expect_path_exists(const char *path)
 {
   struct stat st;
@@ -92,13 +105,22 @@ static void test_makefile_sources(void)
     "../cheats.c",
     NULL
   };
+  char *makefile;
   size_t i;
 
   expect_path_exists("../dc/Makefile");
   expect_path_exists("../dc/romdisk");
 
+  makefile = read_text_file("../dc/Makefile");
+  expect_contains("dc makefile VPATH", makefile, "VPATH += .. .");
+  expect_not_contains("dc makefile object paths", makefile, "../main.o");
+  expect_contains("dc makefile objects", makefile, "main.o");
+
   for(i = 0; sources[i] != NULL; i++)
     expect_path_exists(sources[i]);
+
+  if(makefile != NULL)
+    free(makefile);
 
   printf("makefile sources contract: ok\n");
 }
@@ -106,14 +128,20 @@ static void test_makefile_sources(void)
 static void test_dreamcast_ci_contract(void)
 {
   char *workflow = read_text_file("../.github/workflows/dreamcast-build.yml");
+  char *build_script = read_text_file("../scripts/dc-build.sh");
 
   expect_contains("dreamcast CI workflow", workflow, "gdC.elf");
-  expect_contains("dreamcast CI make", workflow, "-w /src/dc");
-  expect_contains("dreamcast CI image", workflow,
-   "einsteinx2/dcdev-kos-toolchain:gcc-9");
+  expect_contains("dreamcast CI script", workflow, "./scripts/dc-build.sh");
+  expect_contains("dreamcast CI contract tests", workflow, "make -C tests test");
+
+  expect_contains("dreamcast build script", build_script,
+   "einsteinx2/dcdev-kos-toolchain:gcc-9__v2.0.0");
+  expect_contains("dreamcast build script workdir", build_script, "-w /src/dc");
 
   if(workflow != NULL)
     free(workflow);
+  if(build_script != NULL)
+    free(build_script);
 
   printf("dreamcast CI contract: ok\n");
 }

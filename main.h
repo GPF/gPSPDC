@@ -97,6 +97,7 @@ void synchronize();
 void quit();
 #ifdef _arch_dreamcast
 void gpsp_gamepak_load_error(const char *filename);
+void gpsp_audio_init_error(const char *sdl_error);
 #endif
 void delay_us(u32 us_count);
 void get_ticks_us(u64 *tick_return);

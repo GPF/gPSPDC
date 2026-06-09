@@ -129,6 +129,42 @@ Unified gamepak swap paging in `memory.c`:
 
 ---
 
+## Phase 8 — Audio, sprite, build, and menu polish (P8)
+
+**Status:** Complete
+
+### Audio
+- **`sound_reset_fifo()`** — resets the requested Direct Sound channel (A or B), not always channel 0
+- **Audio buffer config** — Dreamcast honors `audio_buffer_size_number` from `gpsp.cfg` / menu
+- **`SDL_OpenAudio()` errors** — fatal on-screen error on Dreamcast when audio init fails
+- **Audio-off wrap bug** — ring-buffer wrap uses `sound_copy_null` when output is disabled
+
+### Sprites / video
+- **`copy_screen()`** — pitch-aware row copy (fixes menu backgrounds and savestate previews)
+- **Frameskip + affine** — affine BG/OBJ reference updates run even when rendering is skipped
+- **OBJ priority list** — bounds check before inserting into the 128-entry per-scanline list
+- **`blit_to_screen()`** — pitch-aware copy helper; compile with `-DGPSP_DC_BLIT_MEMCPY` for safe memcpy blits
+
+### Build stability
+- **`dc/Makefile`** — `VPATH` keeps object files under `dc/` (no root `.o` collisions)
+- **Incremental builds** — removed `rm-elf` from default `all` target
+- **Pinned Docker image** — `gcc-9__v2.0.0` in `scripts/dc-build.sh`
+- **CI** — host contract tests + `./scripts/dc-build.sh` in Dreamcast workflow
+- **`.gitignore`** — ignores build artifacts
+
+### Menu performance
+- **Input pacing** — removed fixed 30 ms sleep on Dreamcast menu input
+- **Vblank** — `SDL_DC_VerticalWait(SDL_FALSE)` so `SDL_Flip` does not block
+- **Dirty redraw** — menu and ROM browser repaint only when changed
+- **Video mode** — Dreamcast stays at 512×512 for gameplay and menu (no `SDL_SetVideoMode` hitches)
+- **Savestate previews** — deferred CD reads; slot sync on main menu without thumbnail reload
+
+- **Host tests** — `tests/phase8_dreamcast_polish_test.c` contract-checks audio, video, menu, and build polish
+
+**Remaining risks:** hardware validation of menu feel, SQ blit thumbnails, and audio buffer tuning on real hardware/Flycast.
+
+---
+
 ## Priority summary
 
 | Phase | Fix | Effort | Impact |
@@ -141,6 +177,7 @@ Unified gamepak swap paging in `memory.c`:
 | **5** | User readiness audit | Small | On-screen errors, docs, debug gating ✓ |
 | **6** | Release verification | Small | Version, smoke-test doc, CI, menu errors ✓ |
 | **7** | Stable build | Small | KOS cross-compile CI, romdisk, docker helper ✓ |
+| **8** | Audio/sprite/build/menu polish | Small | Correctness, build hygiene, menu responsiveness ✓ |
 
 ```mermaid
 flowchart TD
@@ -153,6 +190,7 @@ flowchart TD
     G --> H[Phase 5: User readiness audit]
     H --> I[Phase 6: Release verification]
     I --> J[Phase 7: Stable build CI]
+    J --> K[Phase 8: Audio/sprite/build/menu polish]
 ```
 
 ---
@@ -163,3 +201,6 @@ flowchart TD
 - Config filename path for Dreamcast
 - Double buffering for video mode
 - Menu resolution fix
+- Audio/sprite correctness fixes (Direct Sound FIFO, pitch-aware snapshots, frameskip affine)
+- Build stability (VPATH, pinned Docker image, CI consolidation)
+- Menu responsiveness (dirty redraw, deferred savestate previews, no video mode switching on DC)

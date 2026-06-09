@@ -430,7 +430,9 @@ gui_action_type get_gui_input()
   SDL_Event event;
   gui_action_type gui_action = CURSOR_NONE;
 
+#ifndef _arch_dreamcast
   delay_us(30000);
+#endif
 
   while(SDL_PollEvent(&event))
   {
