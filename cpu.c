@@ -4029,8 +4029,11 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
   {
     u32 key = 0;
 
-    SDL_LockMutex(sound_mutex);
-    SDL_PauseAudio(1);
+    if(sound_initialized)
+    {
+      SDL_LockMutex(sound_mutex);
+      SDL_PauseAudio(1);
+    }
 
     #ifdef PSP_BUILD
 
@@ -4160,8 +4163,11 @@ u32 function_cc step_debug(u32 pc, u32 cycles)
         return -1;
     }
 
-    SDL_PauseAudio(0);
-    SDL_UnlockMutex(sound_mutex);
+    if(sound_initialized)
+    {
+      SDL_PauseAudio(0);
+      SDL_UnlockMutex(sound_mutex);
+    }
   }
 
   last_instruction = reg[REG_PC];

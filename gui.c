@@ -1336,7 +1336,7 @@ u32 menu(u16 *original_screen)
   {
     submenu_option(&graphics_sound_menu, "Graphics and Sound options",
      "Select to set display parameters and frameskip behavior,\n"
-     "audio on/off, audio buffer size, and audio filtering.", 0),
+     "audio on/off, audio buffer size, and screen filtering.", 0),
     numeric_selection_action_option(menu_load_state, menu_sync_savestate_slot,
      "Load state from slot", &savestate_slot, 10,
      "Select to load the game state from the current slot for this game,\n"
@@ -1422,9 +1422,12 @@ u32 menu(u16 *original_screen)
 
   video_resolution_large();
 
-  SDL_LockMutex(sound_mutex);
-  SDL_PauseAudio(1);
-  SDL_UnlockMutex(sound_mutex);
+  if(sound_initialized)
+  {
+    SDL_LockMutex(sound_mutex);
+    SDL_PauseAudio(1);
+    SDL_UnlockMutex(sound_mutex);
+  }
 
   if(gamepak_filename[0] == 0)
   {
@@ -1593,7 +1596,8 @@ u32 menu(u16 *original_screen)
     scePowerSetClockFrequency(clock_speed, clock_speed, clock_speed / 2);
   #endif
 
-  SDL_PauseAudio(0);
+  if(sound_initialized)
+    SDL_PauseAudio(0);
 
   return return_value;
 }

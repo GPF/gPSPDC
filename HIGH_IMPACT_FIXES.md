@@ -146,6 +146,7 @@ Unified gamepak swap paging in `memory.c`:
 - **Audio buffer config** — Dreamcast honors `audio_buffer_size_number` from `gpsp.cfg` / menu
 - **`SDL_OpenAudio()` errors** — fatal on-screen error on Dreamcast when audio init fails
 - **Audio-off wrap bug** — ring-buffer wrap uses `sound_copy_null` when output is disabled
+- **Audio audit polish:** `sound_reset_fifo()` clears FIFO indices; `reset_sound()` zeroes the full ring buffer; audio mutex/cond created before `SDL_OpenAudio()`; `sound_initialized` guards menu/debug pause and mix paths when init fails; removed dead `enable_low_pass_filter` / `synchronize_sound()` / unused PSP audio headers; fixed duplicate envelope assignment in tone control macro; menu help text no longer references nonexistent audio filtering
 
 ### Sprites / video
 - **`copy_screen()`** — pitch-aware row copy (fixes menu backgrounds and savestate previews)

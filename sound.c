@@ -24,6 +24,7 @@
 #endif
 
 u32 global_enable_audio = 1;
+u32 sound_initialized = 0;
 
 direct_sound_struct direct_sound_channel[2];
 gbc_sound_struct gbc_sound_channel[4];
@@ -103,6 +104,9 @@ void sound_timer_queue32(u32 channel, u32 value)
 
 void sound_timer(fixed16_16 frequency_step, u32 channel)
 {
+  if(!sound_initialized)
+    return;
+
   direct_sound_struct *ds = direct_sound_channel + channel;
 
   fixed16_16 fifo_fractional = ds->fifo_fractional;
@@ -163,6 +167,9 @@ void sound_reset_fifo(u32 channel)
   direct_sound_struct *ds = direct_sound_channel + channel;
 
   memset(ds->fifo, 0, 32);
+  ds->fifo_top = 0;
+  ds->fifo_base = 0;
+  ds->fifo_fractional = 0;
 }
 
 // Initial pattern data = 4bits (signed)
@@ -306,13 +313,6 @@ u32 gbc_sound_master_volume;
 
 #define update_tone_noenvelope()                                              \
 
-#define gbc_sound_synchronize()                                               \
-  while(((gbc_sound_buffer_index - sound_buffer_base) % BUFFER_SIZE) >        \
-   (audio_buffer_size * 2))                                                   \
-  {                                                                           \
-    SDL_CondWait(sound_cv, sound_mutex);                                      \
-  }                                                                           \
-
 #define update_tone_counters(envelope_op, sweep_op)                           \
   tick_counter += gbc_sound_tick_step;                                        \
   if(tick_counter > 0xFFFF)                                                   \
@@ -425,17 +425,14 @@ u32 gbc_sound_master_volume;
     wave_bank[i2 + 1] = ((current_sample & 0x0F) - 8);                        \
   }                                                                           \
 
-void synchronize_sound()
-{
-  SDL_LockMutex(sound_mutex);
-
-  gbc_sound_synchronize();
-
-  SDL_UnlockMutex(sound_mutex);
-}
-
 void update_gbc_sound(u32 cpu_ticks)
 {
+  if(!sound_initialized)
+  {
+    gbc_sound_last_cpu_ticks = cpu_ticks;
+    return;
+  }
+
   fixed16_16 buffer_ticks = float_to_fp16_16(((float)(cpu_ticks -
    gbc_sound_last_cpu_ticks) * sound_frequency) / 16777216.0);
   u32 i, i2;
@@ -686,7 +683,7 @@ void reset_sound()
   sound_on = 0;
   sound_buffer_base = 0;
   sound_last_cpu_ticks = 0;
-  memset(sound_buffer, 0, audio_buffer_size);
+  memset(sound_buffer, 0, sizeof(sound_buffer));
 
   for(i = 0; i < 2; i++, ds++)
   {
@@ -718,6 +715,9 @@ void reset_sound()
 
 void sound_exit()
 {
+  if(!sound_initialized)
+    return;
+
   gbc_sound_buffer_index =
    (sound_buffer_base + audio_buffer_size) % BUFFER_SIZE;
   SDL_PauseAudio(1);
@@ -753,6 +753,18 @@ void init_sound()
 
   reset_sound();
 
+  sound_mutex = SDL_CreateMutex();
+  sound_cv = SDL_CreateCond();
+  if(sound_mutex == NULL || sound_cv == NULL)
+  {
+#ifdef _arch_dreamcast
+    gpsp_audio_init_error("failed to create audio synchronization objects");
+#else
+    fprintf(stderr, "SDL audio sync init failed\n");
+#endif
+    return;
+  }
+
   if(SDL_OpenAudio(&desired_spec, &sound_settings) != 0)
   {
 #ifdef _arch_dreamcast
@@ -764,8 +776,7 @@ void init_sound()
   }
 
   sound_frequency = sound_settings.freq;
-  sound_mutex = SDL_CreateMutex();
-  sound_cv = SDL_CreateCond();
+  sound_initialized = 1;
   SDL_PauseAudio(0);
 }
 
