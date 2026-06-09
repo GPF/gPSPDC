@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Run host contract tests
+        run: make -C tests test
       - name: Cross-compile gdC.elf
-        run: docker run --rm -v "${{ github.workspace }}:/src" -w /src/dc einsteinx2/dcdev-kos-toolchain:gcc-9 make
+        run: ./scripts/dc-build.sh
       - name: Verify gdC.elf
         run: test -f dc/gdC.elf

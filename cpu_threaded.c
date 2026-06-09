@@ -64,7 +64,7 @@ typedef struct
 
 #include "psp/mips_emit.h"
 
-#elif _arch_dreamcast 
+#elif defined(_arch_dreamcast)
 #include "sh4_emit.h"
 #else
 

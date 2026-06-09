@@ -135,45 +135,66 @@ s32 load_file(u8 **wildcards, u8 *result)
       {
         file_name = current_file->d_name;
         file_name_length = strlen(file_name);
-
-        if((stat(file_name, &file_info) >= 0) &&
-         ((file_name[0] != '.') || (file_name[1] == '.')))
         {
-          if(S_ISDIR(file_info.st_mode))
-          {
-            dir_list[num_dirs] =
-             (u8 *)malloc(file_name_length + 1);
-            strcpy((char*)dir_list[num_dirs], file_name);
+          u32 entry_valid = 0;
+          u32 entry_is_dir = 0;
 
-            num_dirs++;
+#if defined(_arch_dreamcast) && defined(DT_UNKNOWN)
+          if(current_file->d_type != DT_UNKNOWN)
+          {
+            entry_valid = 1;
+            entry_is_dir = (current_file->d_type == DT_DIR);
+
+            if(!entry_is_dir && current_file->d_type != DT_REG)
+              entry_valid = 0;
           }
-          else
+#endif
+
+          if(!entry_valid && (stat(file_name, &file_info) >= 0))
           {
-            // Must match one of the wildcards, also ignore the .
-            if(file_name_length >= 4)
+            entry_valid = 1;
+            entry_is_dir = S_ISDIR(file_info.st_mode);
+          }
+
+          if(entry_valid &&
+           ((file_name[0] != '.') || (file_name[1] == '.')))
+          {
+            if(entry_is_dir)
             {
-              if(file_name[file_name_length - 4] == '.')
-                ext_pos = file_name_length - 4;
-              else
+              dir_list[num_dirs] =
+               (u8 *)malloc(file_name_length + 1);
+              strcpy((char*)dir_list[num_dirs], file_name);
 
-              if(file_name[file_name_length - 3] == '.')
-                ext_pos = file_name_length - 3;
-
-              else
-                ext_pos = 0;
-
-              for(i = 0; wildcards[i] != NULL; i++)
+              num_dirs++;
+            }
+            else
+            {
+              // Must match one of the wildcards, also ignore the .
+              if(file_name_length >= 4)
               {
-                if(!strcasecmp((file_name + ext_pos),
-                 (char*)wildcards[i]))
+                if(file_name[file_name_length - 4] == '.')
+                  ext_pos = file_name_length - 4;
+                else
+
+                if(file_name[file_name_length - 3] == '.')
+                  ext_pos = file_name_length - 3;
+
+                else
+                  ext_pos = 0;
+
+                for(i = 0; wildcards[i] != NULL; i++)
                 {
-                  file_list[num_files] =
-                   (u8 *)malloc(file_name_length + 1);
+                  if(!strcasecmp((file_name + ext_pos),
+                   (char*)wildcards[i]))
+                  {
+                    file_list[num_files] =
+                     (u8 *)malloc(file_name_length + 1);
 
-                  strcpy((char*)file_list[num_files], file_name);
+                    strcpy((char*)file_list[num_files], file_name);
 
-                  num_files++;
-                  break;
+                    num_files++;
+                    break;
+                  }
                 }
               }
             }
@@ -230,8 +251,6 @@ s32 load_file(u8 **wildcards, u8 *result)
 
     while(repeat)
     {
-      flip_screen();
-
       print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
       print_string("Press X to return to the main menu.",
        COLOR_HELP_TEXT, COLOR_BG, 20, 260);
@@ -273,6 +292,8 @@ s32 load_file(u8 **wildcards, u8 *result)
           }
         }
       }
+
+      flip_screen();
 
       gui_action = get_gui_input();
 
@@ -899,9 +920,13 @@ u32 menu(u16 *original_screen)
   menu_option_type *current_option;
   menu_option_type *display_option;
   u32 current_option_num;
+  u32 menu_dirty = 1;
+  u32 menu_background_drawn = 0;
+  u32 savestate_preview_dirty = 0;
 
   auto void choose_menu();
   auto void clear_help();
+  auto void menu_update_savestate_preview();
 
   u8 *gamepad_help[] =
   {
@@ -979,7 +1004,18 @@ u32 menu(u16 *original_screen)
 
   void menu_change_state()
   {
-    get_savestate_filename(savestate_slot, current_savestate_filename);
+    get_savestate_filename_noshot(savestate_slot, current_savestate_filename);
+    savestate_preview_dirty = 1;
+    menu_dirty = 1;
+  }
+
+  void menu_update_savestate_preview()
+  {
+    if(!savestate_preview_dirty)
+      return;
+
+    get_savestate_snapshot(current_savestate_filename);
+    savestate_preview_dirty = 0;
   }
 
   void menu_save_state()
@@ -1290,14 +1326,24 @@ u32 menu(u16 *original_screen)
     if(new_menu == NULL)
       new_menu = &main_menu;
 
-    clear_screen(COLOR_BG);
-    blit_to_screen(original_screen, 240, 160, 230, 40);
+    if(!menu_background_drawn || (new_menu == &main_menu))
+    {
+      clear_screen(COLOR_BG);
+      blit_to_screen(original_screen, 240, 160, 230, 40);
+      menu_background_drawn = 1;
+    }
+    else
+    {
+      clear_screen_region(0, 30, 480, 250, COLOR_BG);
+    }
 
     current_menu = new_menu;
     current_option = new_menu->options;
     current_option_num = 0;
     if(current_menu->init_function)
      current_menu->init_function();
+
+    menu_dirty = 1;
   }
 
   void clear_help()
@@ -1343,43 +1389,55 @@ u32 menu(u16 *original_screen)
 
   while(repeat)
   {
-    display_option = current_menu->options;
-
-    for(i = 0; i < current_menu->num_options; i++, display_option++)
+    if(menu_dirty)
     {
-      if(display_option->option_type & NUMBER_SELECTION_OPTION)
-      {
-        sprintf(line_buffer, display_option->display_string,
-         *(display_option->current_option));
-      }
-      else
+      menu_update_savestate_preview();
 
-      if(display_option->option_type & STRING_SELECTION_OPTION)
+      display_option = current_menu->options;
+
+      for(i = 0; i < current_menu->num_options; i++, display_option++)
       {
-        sprintf(line_buffer, display_option->display_string,
-         ((u32 *)display_option->options)[*(display_option->current_option)]);
-      }
-      else
-      {
-        strcpy(line_buffer, display_option->display_string);
+        if(display_option->option_type & NUMBER_SELECTION_OPTION)
+        {
+          sprintf(line_buffer, display_option->display_string,
+           *(display_option->current_option));
+        }
+        else
+
+        if(display_option->option_type & STRING_SELECTION_OPTION)
+        {
+          sprintf(line_buffer, display_option->display_string,
+           ((u32 *)display_option->options)[*(display_option->current_option)]);
+        }
+        else
+        {
+          strcpy(line_buffer, display_option->display_string);
+        }
+
+        if(display_option == current_option)
+        {
+          print_string_pad(line_buffer, COLOR_ACTIVE_ITEM, COLOR_BG, 10,
+           (display_option->line_number * 10) + 40, 36);
+        }
+        else
+        {
+          print_string_pad(line_buffer, COLOR_INACTIVE_ITEM, COLOR_BG, 10,
+           (display_option->line_number * 10) + 40, 36);
+        }
       }
 
-      if(display_option == current_option)
-      {
-        print_string_pad(line_buffer, COLOR_ACTIVE_ITEM, COLOR_BG, 10,
-         (display_option->line_number * 10) + 40, 36);
-      }
-      else
-      {
-        print_string_pad(line_buffer, COLOR_INACTIVE_ITEM, COLOR_BG, 10,
-         (display_option->line_number * 10) + 40, 36);
-      }
+      print_string(current_option->help_string, COLOR_HELP_TEXT,
+       COLOR_BG, 30, 210);
+
+      flip_screen();
+      menu_dirty = 0;
     }
-
-    print_string(current_option->help_string, COLOR_HELP_TEXT,
-     COLOR_BG, 30, 210);
-
-    flip_screen();
+#ifdef _arch_dreamcast
+    else
+    {
+      delay_us(16000);
+    }
+#endif
 
     gui_action = get_gui_input();
 
@@ -1391,6 +1449,7 @@ u32 menu(u16 *original_screen)
 
         current_option = current_menu->options + current_option_num;
         clear_help();
+        menu_dirty = 1;
         break;
 
       case CURSOR_UP:
@@ -1401,6 +1460,7 @@ u32 menu(u16 *original_screen)
 
         current_option = current_menu->options + current_option_num;
         clear_help();
+        menu_dirty = 1;
         break;
 
       case CURSOR_RIGHT:
@@ -1413,6 +1473,8 @@ u32 menu(u16 *original_screen)
 
           if(current_option->passive_function)
             current_option->passive_function();
+          else
+            menu_dirty = 1;
         }
         break;
 
@@ -1431,6 +1493,8 @@ u32 menu(u16 *original_screen)
 
           if(current_option->passive_function)
             current_option->passive_function();
+          else
+            menu_dirty = 1;
         }
         break;
 
@@ -1455,7 +1519,9 @@ u32 menu(u16 *original_screen)
   }
 
   set_gba_resolution(screen_scale);
+#ifndef _arch_dreamcast
   video_resolution_small();
+#endif
 
   clock_speed = (clock_speed_number + 1) * 33;
 

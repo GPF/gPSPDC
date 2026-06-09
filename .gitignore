@@ -1,0 +1,6 @@
+*.o
+*.elf
+dc/gdC.elf
+dc/romdisk.img
+dc/romdisk.o
+*.bin

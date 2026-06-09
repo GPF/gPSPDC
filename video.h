@@ -32,6 +32,7 @@ void print_string_pad(const char *str, u16 fg_color, u16 bg_color,
 void print_string_ext(const char *str, u16 fg_color, u16 bg_color,
  u32 x, u32 y, void *_dest_ptr, u32 pitch, u32 pad);
 void clear_screen(u16 color);
+void clear_screen_region(u32 x, u32 y, u32 w, u32 h, u16 color);
 void blit_to_screen(u16 *src, u32 w, u32 h, u32 x, u32 y);
 u16 *copy_screen();
 void flip_screen();

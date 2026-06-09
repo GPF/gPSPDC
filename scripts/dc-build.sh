@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-IMAGE="${DC_BUILD_IMAGE:-einsteinx2/dcdev-kos-toolchain:gcc-9}"
+IMAGE="${DC_BUILD_IMAGE:-einsteinx2/dcdev-kos-toolchain:gcc-9__v2.0.0}"
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 
 if ! command -v docker >/dev/null 2>&1; then

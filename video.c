@@ -3415,7 +3415,7 @@ void init_video()
 		//SDL_Joystick *_joystick = SDL_JoystickOpen(0);
 		// SDL_DC_SetVideoDriver(SDL_DC_DMA_VIDEO);
     // SDL_DC_SetWindow(240,160);
-		//SDL_DC_VerticalWait(SDL_FALSE);
+		SDL_DC_VerticalWait(SDL_FALSE);
 		//SDL_DC_EmulateKeyboard(SDL_TRUE);
         SDL_DC_MapKey(0, SDL_DC_LEFT, SDLK_LEFT);
         SDL_DC_MapKey(0, SDL_DC_RIGHT, SDLK_RIGHT);
@@ -3611,6 +3611,22 @@ void clear_screen(u16 color)
     {
       *dest_ptr = color;
     }
+    dest_ptr += line_skip;
+  }
+}
+
+void clear_screen_region(u32 x, u32 y, u32 w, u32 h, u16 color)
+{
+  u32 pitch = get_screen_pitch();
+  u16 *dest_ptr = get_screen_pixels() + x + (y * pitch);
+  u32 line_skip = pitch - w;
+  u32 cx, cy;
+
+  for(cy = 0; cy < h; cy++)
+  {
+    for(cx = 0; cx < w; cx++, dest_ptr++)
+      *dest_ptr = color;
+
     dest_ptr += line_skip;
   }
 }

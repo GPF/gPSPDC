@@ -318,7 +318,9 @@ int main(int argc, char *argv[])
     }
 
     set_gba_resolution(screen_scale);
+#ifndef _arch_dreamcast
     video_resolution_small();
+#endif
 
     init_cpu();
     init_memory();
@@ -345,7 +347,9 @@ int main(int argc, char *argv[])
       }
 
       set_gba_resolution(screen_scale);
+#ifndef _arch_dreamcast
       video_resolution_small();
+#endif
 
       init_cpu();
       init_memory();
