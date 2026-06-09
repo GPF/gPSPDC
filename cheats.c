@@ -334,14 +334,7 @@ void add_cheats(u8 *cheats_filename)
 
   num_cheats = 0;
   cheat_reset_master_hooks();
-  #ifdef _arch_dreamcast
-  // add /cd/gbaDC/ to the cheats_filename path
-  u8 cheats_filename2[512];
-  sprintf(cheats_filename2, "/cd/gbaDC/%s", cheats_filename);
-  cheats_file = fopen(cheats_filename2, "rb"); 
-#else
   cheats_file = fopen(cheats_filename, "rb");
-#endif
   if(cheats_file)
   {
     while(fgets(current_line, 256, cheats_file))

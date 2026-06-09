@@ -223,6 +223,17 @@ void gpsp_gamepak_load_error(const char *filename)
   gpsp_fatal_error_screen(lines, 3);
 }
 
+void gpsp_video_init_error(const char *sdl_error)
+{
+  printf("gPSPDC could not initialize video.\n");
+
+  if(sdl_error && sdl_error[0])
+    printf("%s\n", sdl_error);
+
+  printf("Press Start to exit.\n");
+  exit(1);
+}
+
 void gpsp_audio_init_error(const char *sdl_error)
 {
   static const char *prefix = "gPSPDC could not initialize audio.";

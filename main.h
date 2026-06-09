@@ -97,6 +97,7 @@ void synchronize();
 void quit();
 #ifdef _arch_dreamcast
 void gpsp_gamepak_load_error(const char *filename);
+void gpsp_video_init_error(const char *sdl_error);
 void gpsp_audio_init_error(const char *sdl_error);
 void gpsp_dynarec_fatal_error(const char *detail);
 #endif

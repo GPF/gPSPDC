@@ -50,7 +50,7 @@ u32 gamepad_config_map[16] =
   BUTTON_ID_MENU,
   BUTTON_ID_A,
   BUTTON_ID_B,
-  BUTTON_ID_START,
+  BUTTON_ID_B,
   BUTTON_ID_L,
   BUTTON_ID_R,
   BUTTON_ID_DOWN,
@@ -304,7 +304,7 @@ u32 update_input()
       else
 
       if((button_id >= BUTTON_ID_RAPIDFIRE_A) &&
-       (button_id <= BUTTON_ID_RAPIDFIRE_L))
+       (button_id <= BUTTON_ID_RAPIDFIRE_R))
       {
         rapidfire_flag ^= 1;
         if(rapidfire_flag)
@@ -401,39 +401,45 @@ static u32 dc_sym_to_button_bit(SDLKey sym)
   }
 }
 
-static void dc_joy_button_set(u32 button, u32 down)
+static u32 dc_joy_button_bit(u32 button)
 {
-  u32 bit = 0;
-
   switch(button)
   {
     case 0:
-      bit = 1 << 2;
-      break;
+      return 1 << 1;
 
     case 1:
-      bit = 1 << 1;
-      break;
+      return 1 << 2;
+
+    case 2:
+      return 1 << 3;
+
+    case 3:
+      return 1 << 0;
 
     case 4:
-      bit = 1 << 4;
-      break;
+      return 1 << 4;
 
     case 5:
-      bit = 1 << 5;
-      break;
+      return 1 << 5;
 
     case 8:
-      bit = 1 << 10;
-      break;
+      return 1 << 10;
 
     case 9:
-      bit = 1 << 11;
-      break;
+      return 1 << 11;
 
     default:
-      return;
+      return 0;
   }
+}
+
+static void dc_joy_button_set(u32 button, u32 down)
+{
+  u32 bit = dc_joy_button_bit(button);
+
+  if(bit == 0)
+    return;
 
   if(down)
     dc_button_held |= bit;
@@ -579,29 +585,7 @@ static void dc_gui_apply_event(SDL_Event *event)
 
     case SDL_JOYBUTTONDOWN:
     {
-      u32 bit = 0;
-
-      switch(event->jbutton.button)
-      {
-        case 0:
-          bit = 1 << 2;
-          break;
-
-        case 1:
-          bit = 1 << 1;
-          break;
-
-        case 8:
-          bit = 1 << 10;
-          break;
-
-        case 9:
-          bit = 1 << 11;
-          break;
-
-        default:
-          break;
-      }
+      u32 bit = dc_joy_button_bit(event->jbutton.button);
 
       gui_dc_held |= bit;
       break;
@@ -609,29 +593,7 @@ static void dc_gui_apply_event(SDL_Event *event)
 
     case SDL_JOYBUTTONUP:
     {
-      u32 bit = 0;
-
-      switch(event->jbutton.button)
-      {
-        case 0:
-          bit = 1 << 2;
-          break;
-
-        case 1:
-          bit = 1 << 1;
-          break;
-
-        case 8:
-          bit = 1 << 10;
-          break;
-
-        case 9:
-          bit = 1 << 11;
-          break;
-
-        default:
-          break;
-      }
+      u32 bit = dc_joy_button_bit(event->jbutton.button);
 
       gui_dc_held &= ~bit;
       break;
@@ -977,7 +939,7 @@ u32 update_input()
       else
 
       if((button_id >= BUTTON_ID_RAPIDFIRE_A) &&
-       (button_id <= BUTTON_ID_RAPIDFIRE_L))
+       (button_id <= BUTTON_ID_RAPIDFIRE_R))
       {
         rapidfire_flag ^= 1;
 

@@ -108,6 +108,8 @@ static void test_menu_contract(void)
 {
   char *gui_c = read_text_file("../gui.c");
   char *input_c = read_text_file("../input.c");
+  char *main_h = read_text_file("../main.h");
+  char *video_c = read_text_file("../video.c");
 
   expect_contains("menu dirty redraw", gui_c, "menu_dirty");
   expect_contains("savestate preview deferral", gui_c,
@@ -127,11 +129,19 @@ static void test_menu_contract(void)
    "dc_process_special_button");
   expect_contains("dc menu button mapping", input_c,
    "BUTTON_ID_MENU");
+  expect_contains("dc joy button mapping", input_c, "dc_joy_button_bit");
+  expect_contains("rapidfire R support", input_c, "BUTTON_ID_RAPIDFIRE_R");
+  expect_contains("video init error decl", main_h, "gpsp_video_init_error");
+  expect_contains("video init fatal path", video_c, "gpsp_video_init_error");
 
   if(gui_c != NULL)
     free(gui_c);
   if(input_c != NULL)
     free(input_c);
+  if(main_h != NULL)
+    free(main_h);
+  if(video_c != NULL)
+    free(video_c);
 
   printf("menu contract: ok\n");
 }

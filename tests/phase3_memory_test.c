@@ -62,10 +62,31 @@ static void expect_contains(const char *name, const char *text,
   }
 }
 
+static void expect_count(const char *name, const char *text, const char *needle,
+ int expected)
+{
+  const char *cursor;
+  int count = 0;
+
+  if(text == NULL)
+    return;
+
+  for(cursor = text; (cursor = strstr(cursor, needle)) != NULL; cursor++)
+    count++;
+
+  if(count != expected)
+  {
+    printf("%s failed: expected %d of `%s`, found %d\n",
+     name, expected, needle, count);
+    failures++;
+  }
+}
+
 static void test_memory_contract(void)
 {
   char *memory_c = read_text_file("../memory.c");
   char *main_c = read_text_file("../main.c");
+  char *cpu_h = read_text_file("../cpu.h");
 
   expect_contains("32KB page size", memory_c, "GAMEPAK_SWAP_PAGE_SIZE");
   expect_contains("dc buffer tiers", memory_c, "16 * 1024 * 1024");
@@ -74,11 +95,19 @@ static void test_memory_contract(void)
   expect_contains("memory map null guard", memory_c,
    "if(gamepak_memory_map == NULL)");
   expect_contains("dc fatal on no rom buffer", main_c, "gpsp_no_memory_error");
+  expect_contains("adjacent page prefetch", memory_c,
+   "prefetch_adjacent_gamepak_page");
+  expect_count("single bios_rom definition", memory_c, "u8 bios_rom[", 1);
+  expect_contains("dc smaller rom translation cache", cpu_h,
+   "#ifdef _arch_dreamcast");
+  expect_contains("dc rom cache size", cpu_h, "1024 * 256 * 4");
 
   if(memory_c != NULL)
     free(memory_c);
   if(main_c != NULL)
     free(main_c);
+  if(cpu_h != NULL)
+    free(cpu_h);
 
   printf("memory contract: ok\n");
 }
