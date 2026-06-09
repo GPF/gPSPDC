@@ -47,8 +47,6 @@
   #include <pspdebug.h>
   #include <pspctrl.h>
   #include <pspgu.h>
-  #include <pspaudio.h>
-  #include <pspaudiolib.h>
   #include <psprtc.h>
 
   #define function_cc

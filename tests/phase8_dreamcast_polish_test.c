@@ -75,6 +75,9 @@ static void test_audio_contract(void)
    "direct_sound_channel + channel");
   expect_contains("audio off null copy", sound_c, "sound_copy_null");
   expect_contains("audio init error decl", main_h, "gpsp_audio_init_error");
+  expect_contains("sound init guard", sound_c, "sound_initialized");
+  expect_contains("fifo reset indices", sound_c, "ds->fifo_fractional = 0");
+  expect_contains("full ring buffer reset", sound_c, "sizeof(sound_buffer)");
 
   if(sound_c != NULL)
     free(sound_c);
