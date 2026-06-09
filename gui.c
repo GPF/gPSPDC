@@ -94,6 +94,7 @@ s32 load_file(u8 **wildcards, u8 *result)
   u32 current_column = 0;
   u32 repeat;
   u32 i;
+  u32 browser_dirty;
   gui_action_type gui_action;
 
   while(return_value == 1)
@@ -242,6 +243,7 @@ s32 load_file(u8 **wildcards, u8 *result)
     }
 
     repeat = 1;
+    browser_dirty = 1;
 
     if(num_files == 0)
       current_column = 1;
@@ -251,49 +253,59 @@ s32 load_file(u8 **wildcards, u8 *result)
 
     while(repeat)
     {
-      print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
-      print_string("Press X to return to the main menu.",
-       COLOR_HELP_TEXT, COLOR_BG, 20, 260);
-
-      for(i = 0, current_file_number = i + current_file_scroll_value;
-       i < FILE_LIST_ROWS; i++, current_file_number++)
+      if(browser_dirty)
       {
-        if(current_file_number < num_files)
+        print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
+        print_string("Press X to return to the main menu.",
+         COLOR_HELP_TEXT, COLOR_BG, 20, 260);
+
+        for(i = 0, current_file_number = i + current_file_scroll_value;
+         i < FILE_LIST_ROWS; i++, current_file_number++)
         {
-          if((current_file_number == current_file_selection) &&
-           (current_column == 0))
+          if(current_file_number < num_files)
           {
-            print_string((char*)file_list[current_file_number], COLOR_ACTIVE_ITEM,
-             COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
-          }
-          else
-          {
-            print_string((char*)file_list[current_file_number], COLOR_INACTIVE_ITEM,
-             COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
+            if((current_file_number == current_file_selection) &&
+             (current_column == 0))
+            {
+              print_string((char*)file_list[current_file_number], COLOR_ACTIVE_ITEM,
+               COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
+            }
+            else
+            {
+              print_string((char*)file_list[current_file_number], COLOR_INACTIVE_ITEM,
+               COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
+            }
           }
         }
-      }
 
-      for(i = 0, current_dir_number = i + current_dir_scroll_value;
-       i < FILE_LIST_ROWS; i++, current_dir_number++)
-      {
-        if(current_dir_number < num_dirs)
+        for(i = 0, current_dir_number = i + current_dir_scroll_value;
+         i < FILE_LIST_ROWS; i++, current_dir_number++)
         {
-          if((current_dir_number == current_dir_selection) &&
-           (current_column == 1))
+          if(current_dir_number < num_dirs)
           {
-            print_string((char*)dir_list[current_dir_number], COLOR_ACTIVE_ITEM,
-             COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
-          }
-          else
-          {
-            print_string((char*)dir_list[current_dir_number], COLOR_INACTIVE_ITEM,
-             COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
+            if((current_dir_number == current_dir_selection) &&
+             (current_column == 1))
+            {
+              print_string((char*)dir_list[current_dir_number], COLOR_ACTIVE_ITEM,
+               COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
+            }
+            else
+            {
+              print_string((char*)dir_list[current_dir_number], COLOR_INACTIVE_ITEM,
+               COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
+            }
           }
         }
-      }
 
-      flip_screen();
+        flip_screen();
+        browser_dirty = 0;
+      }
+#ifdef _arch_dreamcast
+      else
+      {
+        delay_us(16000);
+      }
+#endif
 
       gui_action = get_gui_input();
 
@@ -428,6 +440,10 @@ s32 load_file(u8 **wildcards, u8 *result)
         default:
           break;
       }
+
+      if(gui_action == CURSOR_DOWN || gui_action == CURSOR_UP ||
+       gui_action == CURSOR_LEFT || gui_action == CURSOR_RIGHT)
+        browser_dirty = 1;
     }
 
     for(i = 0; i < num_files; i++)
@@ -1009,9 +1025,14 @@ u32 menu(u16 *original_screen)
     menu_dirty = 1;
   }
 
+  void menu_sync_savestate_slot()
+  {
+    get_savestate_filename_noshot(savestate_slot, current_savestate_filename);
+  }
+
   void menu_update_savestate_preview()
   {
-    if(!savestate_preview_dirty)
+    if(!savestate_preview_dirty || current_menu != &savestate_menu)
       return;
 
     get_savestate_snapshot(current_savestate_filename);
@@ -1286,12 +1307,12 @@ u32 menu(u16 *original_screen)
     submenu_option(&graphics_sound_menu, "Graphics and Sound options",
      "Select to set display parameters and frameskip behavior,\n"
      "audio on/off, audio buffer size, and audio filtering.", 0),
-    numeric_selection_action_option(menu_load_state, NULL,
+    numeric_selection_action_option(menu_load_state, menu_sync_savestate_slot,
      "Load state from slot", &savestate_slot, 10,
      "Select to load the game state from the current slot for this game,\n"
      "if it exists (see the extended menu for more information)\n"
      "Press left + right to change the current slot.", 2),
-    numeric_selection_action_option(menu_save_state, NULL,
+    numeric_selection_action_option(menu_save_state, menu_sync_savestate_slot,
      "Save state to slot", &savestate_slot, 10,
      "Select to save the game state to the current slot for this game.\n"
      "See the extended menu for more information.\n"
@@ -1384,8 +1405,6 @@ u32 menu(u16 *original_screen)
        cheats[i].cheat_name);
     }
   }
-
-  current_menu->init_function();
 
   while(repeat)
   {

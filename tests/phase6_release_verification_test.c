@@ -102,11 +102,27 @@ static void test_smoke_test_doc_contract(void)
   expect_contains("smoke test BIOS", doc, "gba_bios.bin");
   expect_contains("smoke test no ROM", doc, "No game loaded yet");
   expect_contains("smoke test menu load", doc, "ROM from the menu");
+  expect_contains("smoke test menu responsiveness", doc,
+   "Menu and UI responsiveness");
 
   if(doc != NULL)
     free(doc);
 
   printf("smoke test doc contract: ok\n");
+}
+
+static void test_phase8_doc_contract(void)
+{
+  char *doc = read_text_file("../HIGH_IMPACT_FIXES.md");
+
+  expect_contains("phase 8 doc", doc, "Phase 8");
+  expect_contains("phase 8 audio", doc, "sound_reset_fifo");
+  expect_contains("phase 8 menu", doc, "Menu performance");
+
+  if(doc != NULL)
+    free(doc);
+
+  printf("phase 8 doc contract: ok\n");
 }
 
 static void test_ci_contract(void)
@@ -132,6 +148,7 @@ int main(void)
   test_version_contract();
   test_menu_load_error_contract();
   test_smoke_test_doc_contract();
+  test_phase8_doc_contract();
   test_ci_contract();
 
   if(failures != 0)
