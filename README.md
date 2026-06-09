@@ -55,12 +55,13 @@ Default bindings follow the gpSP menu system. In general:
 | A | A |
 | B | B |
 | Start | Start |
-| X / Y | Select / menu shortcuts (configurable) |
+| X | B (default) |
+| Y | Open pause menu (default; configurable) |
 | L / R triggers | L / R |
 
-Open the menu from the ROM browser or in-game (default: hold the menu trigger and use the D-Pad). Button mappings can be changed in **Options → Controls**.
+**Menus:** D-Pad navigates; **A** or **Start** selects; **B** backs out or returns to game; **X** goes up one folder in the ROM browser. Open the in-game pause menu with **Y** by default (change under **Configure gamepad input**).
 
-Frameskip is adjustable from the menu or the in-game frameskip bar.
+Frameskip is adjustable from **Graphics and Sound options** in the pause menu.
 
 ## Building
 
