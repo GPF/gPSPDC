@@ -112,6 +112,9 @@
   #define file_read(filename_tag, buffer, size)                               \
     fread(buffer, size, 1, filename_tag)                                      \
 
+  #define file_read_ok(filename_tag, buffer, size)                            \
+    (fread((buffer), (size), 1, (filename_tag)) == 1)                         \
+
   #define file_write(filename_tag, buffer, size)                              \
     fwrite(buffer, size, 1, filename_tag)                                     \
 

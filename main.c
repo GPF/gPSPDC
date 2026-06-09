@@ -373,7 +373,15 @@ int main(int argc, char *argv[])
     if(load_file(file_ext, load_filename) == -1)
     {
       gpsp_debug_printf("Loading menu...\n");
-      menu(copy_screen());
+      {
+        u16 *screen_copy = copy_screen();
+
+        if(screen_copy == NULL)
+          quit();
+
+        menu(screen_copy);
+        free(screen_copy);
+      }
     }
     else
     {
@@ -399,6 +407,9 @@ int main(int argc, char *argv[])
   }
 
   last_frame = 0;
+
+  if(gamepak_filename[0] == 0)
+    quit();
 
   // We'll never actually return from here.
 

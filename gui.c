@@ -95,6 +95,7 @@ s32 load_file(u8 **wildcards, u8 *result)
   u32 repeat;
   u32 i;
   u32 browser_dirty;
+  u32 browser_alloc_failed;
   gui_action_type gui_action;
 
   while(return_value == 1)
@@ -108,8 +109,17 @@ s32 load_file(u8 **wildcards, u8 *result)
 
     total_filenames_allocated = 32;
     total_dirnames_allocated = 32;
+    browser_alloc_failed = 0;
     file_list = (u8 **)malloc(sizeof(u8 *) * 32);
     dir_list = (u8 **)malloc(sizeof(u8 *) * 32);
+
+    if(file_list == NULL || dir_list == NULL)
+    {
+      free(file_list);
+      free(dir_list);
+      return -1;
+    }
+
     memset(file_list, 0, sizeof(u8 *) * 32);
     memset(dir_list, 0, sizeof(u8 *) * 32);
 
@@ -164,6 +174,13 @@ s32 load_file(u8 **wildcards, u8 *result)
             {
               dir_list[num_dirs] =
                (u8 *)malloc(file_name_length + 1);
+
+              if(dir_list[num_dirs] == NULL)
+              {
+                browser_alloc_failed = 1;
+                break;
+              }
+
               strcpy((char*)dir_list[num_dirs], file_name);
 
               num_dirs++;
@@ -191,6 +208,12 @@ s32 load_file(u8 **wildcards, u8 *result)
                     file_list[num_files] =
                      (u8 *)malloc(file_name_length + 1);
 
+                    if(file_list[num_files] == NULL)
+                    {
+                      browser_alloc_failed = 1;
+                      break;
+                    }
+
                     strcpy((char*)file_list[num_files], file_name);
 
                     num_files++;
@@ -204,8 +227,16 @@ s32 load_file(u8 **wildcards, u8 *result)
 
         if(num_files == total_filenames_allocated)
         {
-          file_list = (u8 **)realloc(file_list, sizeof(u8 *) *
+          u8 **new_file_list = (u8 **)realloc(file_list, sizeof(u8 *) *
            total_filenames_allocated * 2);
+
+          if(new_file_list == NULL)
+          {
+            browser_alloc_failed = 1;
+            break;
+          }
+
+          file_list = new_file_list;
           memset(file_list + total_filenames_allocated, 0,
            sizeof(u8 *) * total_filenames_allocated);
           total_filenames_allocated *= 2;
@@ -213,14 +244,38 @@ s32 load_file(u8 **wildcards, u8 *result)
 
         if(num_dirs == total_dirnames_allocated)
         {
-          dir_list = (u8 **)realloc(dir_list, sizeof(u8 *) *
+          u8 **new_dir_list = (u8 **)realloc(dir_list, sizeof(u8 *) *
            total_dirnames_allocated * 2);
+
+          if(new_dir_list == NULL)
+          {
+            browser_alloc_failed = 1;
+            break;
+          }
+
+          dir_list = new_dir_list;
           memset(dir_list + total_dirnames_allocated, 0,
            sizeof(u8 *) * total_dirnames_allocated);
           total_dirnames_allocated *= 2;
         }
       }
     } while(current_file);
+
+    if(browser_alloc_failed)
+    {
+      for(i = 0; i < num_files; i++)
+        free(file_list[i]);
+
+      for(i = 0; i < num_dirs; i++)
+        free(dir_list[i]);
+
+      free(file_list);
+      free(dir_list);
+      if(current_dir)
+        closedir(current_dir);
+
+      return -1;
+    }
 
     qsort((void *)file_list, num_files, sizeof(u8 *), sort_function);
     qsort((void *)dir_list, num_dirs, sizeof(u8 *), sort_function);
@@ -423,7 +478,8 @@ s32 load_file(u8 **wildcards, u8 *result)
             {
               repeat = 0;
               return_value = 0;
-              strcpy((char*)result, (char*)file_list[current_file_selection]);
+              snprintf((char*)result, 512, "%s",
+               (char*)file_list[current_file_selection]);
             }
           }
           break;

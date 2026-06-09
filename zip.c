@@ -66,6 +66,9 @@ u32 load_file_zip(char *filename)
     if(data.Sig != 0x04034b50)
       break;
 
+    if(data.FilenameLength >= (s32)sizeof(tmp))
+      continue;
+
     file_read(fd, tmp, data.FilenameLength);
     tmp[data.FilenameLength] = 0; // end string
 

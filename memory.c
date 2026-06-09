@@ -1877,8 +1877,18 @@ u32 load_backup(char *name)
   if(file_check_valid(backup_file))
   {
     u32 backup_size = file_length(name, backup_file);
+    u32 backup_cap = sizeof(gamepak_backup);
 
-    file_read(backup_file, gamepak_backup, backup_size);
+    if(backup_size > backup_cap)
+      backup_size = backup_cap;
+
+    if(!file_read_ok(backup_file, gamepak_backup, backup_size))
+    {
+      file_close(backup_file);
+      memset(gamepak_backup, 0xFF, backup_cap);
+      return (u32)-1;
+    }
+
     file_close(backup_file);
 
     // The size might give away what kind of backup it is.
@@ -2139,9 +2149,14 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
 
 s32 load_gamepak_raw(char *name)
 {
-	char newname[100];
-	sprintf(newname,"/cd/gbaDC/%s",name);
-  file_open(gamepak_file, newname, read);
+#ifdef _arch_dreamcast
+  char open_path[512];
+
+  snprintf(open_path, sizeof(open_path), "/cd/gbaDC/%s", name);
+#else
+  char *open_path = name;
+#endif
+  file_open(gamepak_file, open_path, read);
 
   if(file_check_valid(gamepak_file))
   {
@@ -2156,7 +2171,12 @@ s32 load_gamepak_raw(char *name)
     // probably want to load it later
     if(gamepak_size <= gamepak_ram_buffer_size)
     {
-      file_read(gamepak_file, gamepak_rom, gamepak_size);
+      if(!file_read_ok(gamepak_file, gamepak_rom, gamepak_size))
+      {
+        file_close(gamepak_file);
+        return -1;
+      }
+
       file_close(gamepak_file);
 
 #ifdef PSP_BUILD
@@ -2168,7 +2188,12 @@ s32 load_gamepak_raw(char *name)
     else
     {
       // Read in just enough for the header
-      file_read(gamepak_file, gamepak_rom, 0x100);
+      if(!file_read_ok(gamepak_file, gamepak_rom, 0x100))
+      {
+        file_close(gamepak_file);
+        return -1;
+      }
+
       gamepak_file_large = gamepak_file;
     }
 
@@ -2914,8 +2939,12 @@ static void map_gamepak_physical_page(u32 physical_index, u32 page_index)
   gamepak_memory_map[page_index].physical_index = physical_index;
   page_time++;
 
-  file_seek(gamepak_file_large, physical_index * GAMEPAK_SWAP_PAGE_SIZE, SEEK_SET);
-  file_read(gamepak_file_large, swap_location, GAMEPAK_SWAP_PAGE_SIZE);
+  if(file_seek(gamepak_file_large, physical_index * GAMEPAK_SWAP_PAGE_SIZE,
+   SEEK_SET) != 0 ||
+   !file_read_ok(gamepak_file_large, swap_location, GAMEPAK_SWAP_PAGE_SIZE))
+  {
+    memset(swap_location, 0, GAMEPAK_SWAP_PAGE_SIZE);
+  }
   memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] = swap_location;
   memory_map_read[(0x0A000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = swap_location;
   memory_map_read[(0x0C000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = swap_location;
@@ -3223,22 +3252,41 @@ void init_memory()
   sound_##type##_savestate(savestate_file);                                   \
   video_##type##_savestate(savestate_file)                                    \
 
+static void memory_repair_flash_bank_ptr(void)
+{
+  if(flash_bank_ptr < gamepak_backup ||
+   flash_bank_ptr >= gamepak_backup + sizeof(gamepak_backup))
+    flash_bank_ptr = gamepak_backup;
+}
+
 void load_state(char *savestate_filename)
 {
-  file_open(savestate_file, savestate_filename, read);
-  if(file_check_valid(savestate_file))
+  u32 reload_attempted = 0;
+  u32 i;
+  u32 current_color;
+
+  if(sound_initialized)
+  {
+    SDL_LockMutex(sound_mutex);
+    SDL_PauseAudio(1);
+  }
+
+  while(1)
   {
     char current_gamepak_filename[512];
-    char savestate_gamepak_filename[512];
-    u32 i;
-    u32 current_color;
+
+    file_open(savestate_file, savestate_filename, read);
+
+    if(!file_check_valid(savestate_file))
+      break;
 
     file_seek(savestate_file, (240 * 160 * 2) + sizeof(time_t), SEEK_SET);
-
     strcpy(current_gamepak_filename, gamepak_filename);
 
     savestate_block(read);
     file_close(savestate_file);
+
+    memory_repair_flash_bank_ptr();
 
     flush_translation_cache_ram();
     flush_translation_cache_rom();
@@ -3246,48 +3294,47 @@ void load_state(char *savestate_filename)
 
     oam_update = 1;
     gbc_sound_update = 1;
-    if(strcmp(current_gamepak_filename, gamepak_filename))
+
+    if(!reload_attempted && strcmp(current_gamepak_filename, gamepak_filename))
     {
-      // We'll let it slide if the filenames of the savestate and
-      // the gamepak are similar enough.
       u32 dot_position = strcspn(current_gamepak_filename, ".");
+
       if(strncmp(savestate_filename, current_gamepak_filename, dot_position))
       {
         if(load_gamepak(gamepak_filename) != -1)
         {
           reset_gba();
-          // Okay, so this takes a while, but for now it works.
-          load_state(savestate_filename);
-        }
-        else
-        {
-#ifdef _arch_dreamcast
-          gpsp_gamepak_load_error((char *)gamepak_filename);
-#else
-          quit();
-#endif
+          reload_attempted = 1;
+          continue;
         }
 
-        return;
+#ifdef _arch_dreamcast
+        gpsp_gamepak_load_error((char *)gamepak_filename);
+#else
+        quit();
+#endif
       }
     }
 
     for(i = 0; i < 512; i++)
     {
       current_color = palette_ram[i];
-      palette_ram_converted[i] =
-       convert_palette(current_color);
+      palette_ram_converted[i] = convert_palette(current_color);
     }
 
-    // Oops, these contain raw pointers
     for(i = 0; i < 4; i++)
-    {
       gbc_sound_channel[i].sample_data = square_pattern_duty[2];
-    }
+
     current_debug_state = STEP;
     instruction_count = 0;
-
     reg[CHANGED_PC_STATUS] = 1;
+    break;
+  }
+
+  if(sound_initialized)
+  {
+    SDL_PauseAudio(0);
+    SDL_UnlockMutex(sound_mutex);
   }
 }
 
@@ -3297,6 +3344,13 @@ u8 *write_mem_ptr;
 void save_state(char *savestate_filename, u16 *screen_capture)
 {
   write_mem_ptr = savestate_write_buffer;
+
+  if(sound_initialized)
+  {
+    SDL_LockMutex(sound_mutex);
+    SDL_PauseAudio(1);
+  }
+
   file_open(savestate_file, savestate_filename, write);
   if(file_check_valid(savestate_file))
   {
@@ -3310,6 +3364,12 @@ void save_state(char *savestate_filename, u16 *screen_capture)
     file_write(savestate_file, savestate_write_buffer,
      sizeof(savestate_write_buffer));
     file_close(savestate_file);
+  }
+
+  if(sound_initialized)
+  {
+    SDL_PauseAudio(0);
+    SDL_UnlockMutex(sound_mutex);
   }
 }
 
