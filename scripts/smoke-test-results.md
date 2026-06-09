@@ -2,6 +2,8 @@
 
 Record Flycast or Dreamcast results for [HARDWARE_SMOKE_TEST.md](../HARDWARE_SMOKE_TEST.md).
 
+**Host contract tests** (`make -C tests test`): verify source contracts only — not on-target FPS or menu feel.
+
 | # | Test | Pass/Fail | Notes |
 |---|------|-----------|-------|
 | 1 | Boot without BIOS | | |
