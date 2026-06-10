@@ -28,6 +28,7 @@ typedef enum {
 #define sh4_reg_a0 sh4_reg_r4
 #define sh4_reg_a1 sh4_reg_r5
 #define sh4_reg_a2 sh4_reg_r6
+#define sh4_reg_a3 sh4_reg_r7
 #define sh4_reg_rv sh4_reg_r0
 #define sh4_reg_s0 sh4_reg_r14
 
@@ -455,10 +456,10 @@ u32 function_cc execute_arm_translate(u32 cycles);
   SH4_EMIT_FUNCTION_CALL(execute_mul_long_u64)
 
 #define generate_multiply_s64_add(ireg_src, ireg_lo, ireg_hi) \
-  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs)
+  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs_s64)
 
 #define generate_multiply_u64_add(ireg_src, ireg_lo, ireg_hi) \
-  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs)
+  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs_u64)
 
 #define generate_function_call(function_location) \
   SH4_EMIT_FUNCTION_CALL(function_location)

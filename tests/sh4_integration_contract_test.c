@@ -163,6 +163,14 @@ static void test_sh4_helpers_irq_contract(void)
    "irq_pc = sh4_take_pending_irq(address);");
   expect_count("old broken check_for_interrupts macro", text,
    "#define check_for_interrupts()", 0);
+  expect_contains("stm pc stores pc+8", text,
+   "execute_aligned_store32(address, insn_pc + 8);");
+  expect_contains("smlal signed product", text,
+   "u64 result = (u64)((s64)(s32)rm * (s32)rs) + (((u64)acc_hi) << 32) + acc_lo;");
+  expect_contains("umlal unsigned helper", text,
+   "void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,");
+  expect_count("old shared mul long accumulate helper", text,
+   "execute_mul_long_regs(u32", 0);
 
   free(text);
   if(failures == failures_before)
@@ -192,6 +200,10 @@ static void test_sh4_psr_store_contract(void)
    "#define arm_psr_store_finish(", 0);
   expect_contains("dynarec block memory helper call", text,
    "generate_function_call(execute_arm_block_memory)");
+  expect_contains("mul long acc_hi in fourth arg reg", text,
+   "generate_load_reg(a3, rdhi);");
+  expect_count("mul long acc_hi in callee-saved reg", text,
+   "generate_load_reg(s0, rdhi);", 0);
 
   free(text);
   if(failures == failures_before)

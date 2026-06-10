@@ -51,7 +51,10 @@ u32 function_cc execute_mov(u32 rm);
 u32 function_cc execute_movs(u32 rm);
 u32 function_cc execute_mul_flags(u32 dest);
 u32 function_cc execute_mul_long_flags(u32 dest_lo, u32 dest_hi);
-void function_cc execute_mul_long_regs(u32 rm, u32 rs, u32 acc_lo, u32 acc_hi);
+void function_cc execute_mul_long_regs_s64(u32 rm, u32 rs, u32 acc_lo,
+ u32 acc_hi);
+void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,
+ u32 acc_hi);
 void function_cc execute_mul_long_s64(u32 rm, u32 rs);
 void function_cc execute_mul_long_u64(u32 rm, u32 rs);
 u32 function_cc execute_mul_regs(u32 rm, u32 rs);

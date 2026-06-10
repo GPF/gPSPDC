@@ -491,10 +491,14 @@
 
 #define arm_multiply_long_flags_no(_dest)                                     \
 
+/* execute_mul_long_regs(rm, rs, acc_lo, acc_hi) takes its arguments in      \
+   r4/r5/r6/r7 per the SH-4 ABI: the accumulator high word must be loaded    \
+   into a3 (r7).  Loading it into s0 (r14) left r7 garbage, corrupting the   \
+   high word of every SMLAL/UMLAL. */                                        \
 #define arm_multiply_long_add_yes(name)                                       \
   generate_load_reg(a2, rdlo);                                                \
-  generate_load_reg(s0, rdhi);                                                \
-  generate_multiply_##name(a1, a2, s0)                                        \
+  generate_load_reg(a3, rdhi);                                                \
+  generate_multiply_##name(a1, a2, a3)                                        \
 
 #define arm_multiply_long_add_no(name)                                        \
   generate_multiply_##name(a1)                                                \
