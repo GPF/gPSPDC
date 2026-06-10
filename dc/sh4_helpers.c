@@ -16,6 +16,7 @@ extern cpu_alert_type write_memory32(u32 address, u32 value);
 extern void set_cpu_mode(u32 mode);
 extern u32 cpu_modes[32];
 extern u16 io_registers[];
+extern u32 bios_read_protect;
 
 #define calculate_z_flag(dest) (reg[REG_Z_FLAG] = ((dest) == 0))
 #define calculate_n_flag(dest) (reg[REG_N_FLAG] = ((signed)(dest) < 0))
@@ -44,10 +45,13 @@ static u32 sh4_take_pending_irq(u32 return_pc)
   if((io_registers[REG_IE] & io_registers[REG_IF]) &&
    io_registers[REG_IME] && ((reg[REG_CPSR] & 0x80) == 0))
   {
+    bios_read_protect = 0xe55ec002;
     reg_mode[MODE_IRQ][6] = return_pc + 4;
     spsr[MODE_IRQ] = reg[REG_CPSR];
     reg[REG_CPSR] = 0xD2;
     set_cpu_mode(MODE_IRQ);
+    reg[CPU_HALT_STATE] = CPU_ACTIVE;
+    reg[CHANGED_PC_STATUS] = 1;
     return 0x00000018;
   }
 
@@ -606,8 +610,7 @@ void function_cc execute_arm_block_memory(u32 opcode, u32 insn_pc)
     {
       u32 value = execute_aligned_load32(address);
 
-      reg[REG_PC] = value & ~0x01;
-      reg[CHANGED_PC_STATUS] = 1;
+      reg[REG_PC] = value;
     }
     else
     {
