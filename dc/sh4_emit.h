@@ -28,6 +28,7 @@ typedef enum {
 #define sh4_reg_a0 sh4_reg_r4
 #define sh4_reg_a1 sh4_reg_r5
 #define sh4_reg_a2 sh4_reg_r6
+#define sh4_reg_a3 sh4_reg_r7
 #define sh4_reg_rv sh4_reg_r0
 #define sh4_reg_s0 sh4_reg_r14
 
@@ -54,6 +55,19 @@ static inline u32 sh4_branch12_in_range(const void *source,
 
 #define SH4_RELATIVE_OFFSET(source, target) \
   sh4_relative_offset_words((source), (target))
+
+/* A long-branch slot starts with mov.l @(1,pc),r1 / jmp @r1 / nop and is
+   followed by a 4-byte literal; the literal lands at +8 bytes when the slot
+   starts 4-aligned (one alignment nop) and at +6 bytes otherwise. */
+static inline u32 *sh4_long_branch_literal(void *slot)
+{
+  u8 *d = (u8 *)slot;
+
+  if((((u32)(unsigned long)d + 6) & 3) != 0)
+    return (u32 *)(d + 8);
+
+  return (u32 *)(d + 6);
+}
 
 #define SH4_EMIT_MOV(rd, rm) \
   SH4_EMIT_BYTE(0x6003 | ((rd & 0xF) << 8) | ((rm & 0xF) << 4))
@@ -216,6 +230,30 @@ static inline u32 sh4_branch12_in_range(const void *source,
     SH4_EMIT_NOP(); \
   } while(0)
 
+/* Far-capable conditional skip.  A lone bt/bf only reaches +/-254 bytes, but
+   the ARM per-condition block header skips an entire run of same-condition
+   instructions, whose emitted body easily exceeds that.  Emit a short bt/bf
+   that hops over a 12-bit bra (reach +/-4 KB) so the skip target can be
+   patched anywhere in the block.  writeback_location points at the bra, which
+   generate_branch_patch_conditional fills in.
+     SH4_EMIT_COND_SKIP_T: take the bra (skip) when T == 1
+     SH4_EMIT_COND_SKIP_F: take the bra (skip) when T == 0 */
+#define SH4_EMIT_COND_SKIP_T(writeback_location) \
+  do { \
+    SH4_EMIT_BYTE(0x8B01); /* bf .+6: when T==0 fall through past the bra */ \
+    (writeback_location) = (u8 *)translation_ptr; \
+    SH4_EMIT_BYTE(0xA000); \
+    SH4_EMIT_NOP(); \
+  } while(0)
+
+#define SH4_EMIT_COND_SKIP_F(writeback_location) \
+  do { \
+    SH4_EMIT_BYTE(0x8901); /* bt .+6: when T==1 fall through past the bra */ \
+    (writeback_location) = (u8 *)translation_ptr; \
+    SH4_EMIT_BYTE(0xA000); \
+    SH4_EMIT_NOP(); \
+  } while(0)
+
 #define SH4_EMIT_BF_FILLER(writeback_location) \
   do { \
     (writeback_location) = (u8 *)translation_ptr; \
@@ -242,6 +280,19 @@ static inline u32 sh4_branch12_in_range(const void *source,
     (literal_location) = (u32 *)translation_ptr; \
     *((u32 *)translation_ptr) = (u32)(target); \
     translation_ptr += 2; \
+  } while(0)
+
+/* Block exits are emitted as fixed-shape absolute-jump slots because the
+   12-bit bra displacement only reaches +/-4KB, while patch targets (internal
+   loop heads in large blocks, linked external blocks) can be much further
+   away.  In-range patches rewrite the slot to bra/nop; out-of-range patches
+   keep the veneer instructions and just fill in the literal. */
+#define SH4_EMIT_LONG_BRANCH_FILLER(writeback_location) \
+  do { \
+    u32 *_filler_literal; \
+    (writeback_location) = (u8 *)translation_ptr; \
+    SH4_EMIT_ABSOLUTE_JUMP_VENEER(0, _filler_literal); \
+    (void)_filler_literal; \
   } while(0)
 
 #define SH4_EMIT_ADD_UNSIGNED_BYTE(rd, imm) \
@@ -305,10 +356,10 @@ extern u32 idle_loop_target_pc;
 #define block_prologue_size 0
 
 u32 sh4_update_gba(u32 pc);
-void sh4_indirect_branch_arm(u32 address);
-void sh4_indirect_branch_thumb(u32 address);
-void sh4_indirect_branch_dual(u32 address);
-void sh4_step_debug(u32 pc);
+void sh4_indirect_branch_arm(u32 address, u32 cycles) __attribute__((noreturn));
+void sh4_indirect_branch_thumb(u32 address, u32 cycles) __attribute__((noreturn));
+void sh4_indirect_branch_dual(u32 address, u32 cycles) __attribute__((noreturn));
+void sh4_step_debug(u32 pc, u32 cycles);
 void sh4_cheat_hook(void);
 void sh4_trace_swi(u32 swi_number, u32 pc, u32 thumb);
 void sh4_trace_emit_update_pc(u32 new_pc, u32 source_pc, u32 opcode);
@@ -405,13 +456,34 @@ u32 function_cc execute_arm_translate(u32 cycles);
   SH4_EMIT_FUNCTION_CALL(execute_mul_long_u64)
 
 #define generate_multiply_s64_add(ireg_src, ireg_lo, ireg_hi) \
-  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs)
+  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs_s64)
 
 #define generate_multiply_u64_add(ireg_src, ireg_lo, ireg_hi) \
-  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs)
+  SH4_EMIT_FUNCTION_CALL(execute_mul_long_regs_u64)
 
 #define generate_function_call(function_location) \
   SH4_EMIT_FUNCTION_CALL(function_location)
+
+/* Store helpers take the live cycle counter (r13) as their fourth argument
+   so SMC flushes and hardware alerts can re-enter translated code through
+   the stack-resetting dispatcher. */
+#define generate_store_call(mem_type) \
+  do { \
+    SH4_EMIT_MOV(sh4_reg_r7, REG_CYCLES); \
+    generate_function_call(execute_store_##mem_type); \
+  } while(0)
+
+#ifdef GPSP_DC_RUNTIME_TRACE
+#define generate_swi_trace(swi_num, return_pc, is_thumb) \
+  do { \
+    generate_load_imm(a0, (swi_num)); \
+    generate_load_imm(a1, (return_pc)); \
+    generate_load_imm(a2, (is_thumb)); \
+    generate_function_call(sh4_trace_swi); \
+  } while(0)
+#else
+#define generate_swi_trace(swi_num, return_pc, is_thumb)
+#endif
 
 #define generate_cycle_update() \
   do { \
@@ -422,9 +494,11 @@ u32 function_cc execute_arm_translate(u32 cycles);
 
 #define generate_cycle_update_force() generate_cycle_update()
 
+/* Conditional skips now reserve a 12-bit bra (SH4_EMIT_COND_SKIP_*) whose
+   writeback location points at the bra word, so patching is identical to an
+   unconditional bra patch. */
 #define generate_branch_patch_conditional(dest, offset) \
-  *((u16 *)(dest)) = ((*((u16 *)(dest)) & 0xFF00) | \
-   (SH4_RELATIVE_OFFSET((dest), (offset)) & 0xFF))
+  generate_branch_patch_unconditional_direct((dest), (offset))
 
 #define generate_branch_patch_unconditional_direct(dest, offset) \
   do { \
@@ -432,8 +506,18 @@ u32 function_cc execute_arm_translate(u32 cycles);
     *((u16 *)(dest)) = (0xA000 | _rel); \
   } while(0)
 
+/* Patches a SH4_EMIT_LONG_BRANCH_FILLER slot.  Near targets become
+   bra/nop (the bra delay slot must not keep the veneer's jmp); far targets
+   keep the veneer and receive the absolute address in its literal. */
 #define generate_branch_patch_unconditional(dest, offset) \
-  generate_branch_patch_unconditional_direct((dest), (offset))
+  do { \
+    if(sh4_branch12_in_range((dest), (offset))) { \
+      generate_branch_patch_unconditional_direct((dest), (offset)); \
+      ((u16 *)(dest))[1] = 0x0009; \
+    } else { \
+      *sh4_long_branch_literal(dest) = (u32)(offset); \
+    } \
+  } while(0)
 
 #define generate_update_pc(new_pc) \
   do { \
@@ -454,25 +538,25 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_branch_filler_true(ireg_dest, ireg_src, writeback_location) \
   do { \
     SH4_EMIT_TST_REG(SH4_IREG(ireg_dest)); \
-    SH4_EMIT_BT_FILLER(writeback_location); \
+    SH4_EMIT_COND_SKIP_T(writeback_location); \
   } while(0)
 
 #define generate_branch_filler_false(ireg_dest, ireg_src, writeback_location) \
   do { \
     SH4_EMIT_TST_REG(SH4_IREG(ireg_dest)); \
-    SH4_EMIT_BF_FILLER(writeback_location); \
+    SH4_EMIT_COND_SKIP_F(writeback_location); \
   } while(0)
 
 #define generate_branch_filler_equal(ireg_dest, ireg_src, writeback_location) \
   do { \
     SH4_EMIT_CMP_REG(SH4_IREG(ireg_dest), SH4_IREG(ireg_src)); \
-    SH4_EMIT_BF_FILLER(writeback_location); \
+    SH4_EMIT_COND_SKIP_F(writeback_location); \
   } while(0)
 
 #define generate_branch_filler_not_equal(ireg_dest, ireg_src, writeback_location) \
   do { \
     SH4_EMIT_CMP_REG(SH4_IREG(ireg_dest), SH4_IREG(ireg_src)); \
-    SH4_EMIT_BT_FILLER(writeback_location); \
+    SH4_EMIT_COND_SKIP_T(writeback_location); \
   } while(0)
 
 #define generate_conditional_branch(ireg_a, ireg_b, type, writeback_location) \
@@ -485,15 +569,15 @@ u32 function_cc execute_arm_translate(u32 cycles);
       SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc); \
       SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \
       SH4_EMIT_RELOAD_CYCLES(); \
-      SH4_EMIT_BRA_FILLER(writeback_location); \
+      SH4_EMIT_LONG_BRANCH_FILLER(writeback_location); \
     } else { \
       SH4_EMIT_CMP_PZ(REG_CYCLES); \
-      SH4_EMIT_BT_FILLER(_skip_update); \
+      SH4_EMIT_COND_SKIP_T(_skip_update); \
       SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc); \
       SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \
       SH4_EMIT_RELOAD_CYCLES(); \
       generate_branch_patch_conditional(_skip_update, translation_ptr); \
-      SH4_EMIT_BRA_FILLER(writeback_location); \
+      SH4_EMIT_LONG_BRANCH_FILLER(writeback_location); \
     } \
   } while(0)
 
@@ -509,11 +593,17 @@ u32 function_cc execute_arm_translate(u32 cycles);
    block_exits[block_exit_position].branch_target); \
   block_exit_position++
 
+/* The live SH-4 cycle counter (r13) is passed explicitly so the dispatch
+   stub can re-enter the next block through the stack-resetting trampoline
+   instead of nesting C call frames that never unwind. */
 #define generate_indirect_branch_cycle_update(type) \
-  SH4_EMIT_FUNCTION_CALL(sh4_indirect_branch_##type)
+  do { \
+    SH4_EMIT_MOV(sh4_reg_r5, REG_CYCLES); \
+    SH4_EMIT_FUNCTION_CALL(sh4_indirect_branch_##type); \
+  } while(0)
 
 #define generate_indirect_branch_no_cycle_update(type) \
-  SH4_EMIT_FUNCTION_CALL(sh4_indirect_branch_##type)
+  generate_indirect_branch_cycle_update(type)
 
 #define generate_block_prologue() \
 
@@ -681,6 +771,7 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_step_debug() \
   do { \
     SH4_EMIT_LOAD_IMM(sh4_reg_r4, pc); \
+    SH4_EMIT_MOV(sh4_reg_r5, REG_CYCLES); \
     SH4_EMIT_FUNCTION_CALL(sh4_step_debug); \
   } while(0)
 

@@ -127,9 +127,12 @@ static void test_shift_and_call_encodings(void)
 static void test_branch_filler_polarity(void)
 {
   u8 *patch;
+  /* Each conditional skip is now tst/cmp + short bt/bf hop + 12-bit bra + nop.
+     true:  skip (bra) when T==1 -> hop is bf .+6 (0x8B01)
+     false: skip (bra) when T==0 -> hop is bt .+6 (0x8901) */
   const u16 expected[] = {
-    0x2448, 0x8900, 0x0009, /* true: skip when tested value is zero */
-    0x2448, 0x8B00, 0x0009  /* false: skip when tested value is non-zero */
+    0x2448, 0x8B01, 0xA000, 0x0009, /* true  */
+    0x2448, 0x8901, 0xA000, 0x0009  /* false */
   };
 
   reset_buffer();
@@ -138,6 +141,53 @@ static void test_branch_filler_polarity(void)
   (void)patch;
   expect_words("boolean branch filler polarity", expected,
    sizeof(expected) / sizeof(expected[0]));
+}
+
+static void test_conditional_skip_patch(void)
+{
+  u8 *skip;
+  u8 *near_target;
+  u16 expected_bra;
+
+  /* The writeback location points at the bra; patching reaches far targets a
+     lone bt/bf (+/-254 bytes) could not. */
+  reset_buffer();
+  generate_branch_filler_true(a0, a1, skip);
+  near_target = (u8 *)translation_ptr;
+  expected_bra = 0xA000 |
+   (sh4_relative_offset_words(skip, near_target) & 0x0FFF);
+
+  generate_branch_patch_conditional(skip, near_target);
+  if(*((u16 *)skip) != expected_bra)
+  {
+    printf("conditional skip near patch failed: got %04x expected %04x\n",
+     *((u16 *)skip), expected_bra);
+    failures++;
+  }
+  else
+  {
+    printf("conditional skip near patch: ok\n");
+  }
+
+  /* A far skip (beyond the old 8-bit reach) still encodes a valid bra. */
+  reset_buffer();
+  generate_branch_filler_equal(a0, a1, skip);
+  {
+    u8 *far_target = skip + 2000; /* ~1000 words, far past 8-bit bt/bf range */
+    s32 off = sh4_relative_offset_words(skip, far_target);
+    expected_bra = 0xA000 | (off & 0x0FFF);
+    generate_branch_patch_conditional(skip, far_target);
+    if(*((u16 *)skip) != expected_bra || off < -2048 || off > 2047)
+    {
+      printf("conditional skip far patch failed: got %04x expected %04x "
+       "off=%d\n", *((u16 *)skip), expected_bra, off);
+      failures++;
+    }
+    else
+    {
+      printf("conditional skip far patch: ok\n");
+    }
+  }
 }
 
 static void test_load_imm_encodings(void)
@@ -232,6 +282,60 @@ static void test_branch_patch_and_veneer(void)
   }
 }
 
+static void test_long_branch_filler_patch(void)
+{
+  u8 *branch;
+  u8 *near_target;
+  u8 *far_target;
+  u32 *literal;
+  u32 literal_value;
+  u16 expected_branch;
+
+  /* Near target: the slot is rewritten to bra/nop; the veneer's jmp must
+     not survive in the bra delay slot. */
+  reset_buffer();
+  SH4_EMIT_LONG_BRANCH_FILLER(branch);
+  SH4_EMIT_NOP();
+  near_target = (u8 *)translation_ptr;
+  expected_branch = 0xA000 |
+   (sh4_relative_offset_words(branch, near_target) & 0x0FFF);
+
+  generate_branch_patch_unconditional(branch, near_target);
+  if(((u16 *)branch)[0] != expected_branch || ((u16 *)branch)[1] != 0x0009)
+  {
+    printf("near long branch patch failed: got %04x %04x expected %04x 0009\n",
+     ((u16 *)branch)[0], ((u16 *)branch)[1], expected_branch);
+    failures++;
+  }
+  else
+  {
+    printf("near long branch patch: ok\n");
+  }
+
+  /* Far target: the veneer instructions stay and the literal receives the
+     absolute target address. */
+  reset_buffer();
+  SH4_EMIT_LONG_BRANCH_FILLER(branch);
+  far_target = branch + 0x10000;
+
+  generate_branch_patch_unconditional(branch, far_target);
+  literal = sh4_long_branch_literal(branch);
+  memcpy(&literal_value, literal, sizeof(literal_value));
+  if(((u16 *)branch)[0] != 0xD101 || ((u16 *)branch)[1] != 0x412B ||
+   ((u16 *)branch)[2] != 0x0009 ||
+   literal_value != (u32)(unsigned long)far_target)
+  {
+    printf("far long branch patch failed: %04x %04x %04x literal=%08x\n",
+     ((u16 *)branch)[0], ((u16 *)branch)[1], ((u16 *)branch)[2],
+     literal_value);
+    failures++;
+  }
+  else
+  {
+    printf("far long branch patch: ok\n");
+  }
+}
+
 static void test_icache_range_hook(void)
 {
   u8 cache[64];
@@ -271,8 +375,10 @@ int main(void)
   test_alu_encodings();
   test_shift_and_call_encodings();
   test_branch_filler_polarity();
+  test_conditional_skip_patch();
   test_load_imm_encodings();
   test_branch_patch_and_veneer();
+  test_long_branch_filler_patch();
   test_icache_range_hook();
 
   return failures == 0 ? 0 : 1;

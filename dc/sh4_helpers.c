@@ -504,9 +504,19 @@ static void sh4_set_mul_result(u32 lo, u32 hi)
   );
 }
 
-void function_cc execute_mul_long_regs(u32 rm, u32 rs, u32 acc_lo, u32 acc_hi)
+void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,
+ u32 acc_hi)
 {
   u64 result = (u64)rm * (u64)rs + (((u64)acc_hi) << 32) + acc_lo;
+  sh4_set_mul_result((u32)result, (u32)(result >> 32));
+}
+
+void function_cc execute_mul_long_regs_s64(u32 rm, u32 rs, u32 acc_lo,
+ u32 acc_hi)
+{
+  /* SMLAL needs the signed 64-bit product; only the product's signedness
+     differs from UMLAL, the accumulate is bit-identical in u64 math. */
+  u64 result = (u64)((s64)(s32)rm * (s32)rs) + (((u64)acc_hi) << 32) + acc_lo;
   sh4_set_mul_result((u32)result, (u32)(result >> 32));
 }
 
@@ -614,7 +624,9 @@ void function_cc execute_arm_block_memory(u32 opcode, u32 insn_pc)
     }
     else
     {
-      execute_aligned_store32(address, insn_pc + 4);
+      /* Reading PC during STM yields insn_pc + 8 (interpreter parity:
+         arm_pc_offset(4) then store of pc + 4). */
+      execute_aligned_store32(address, insn_pc + 8);
     }
   }
 }

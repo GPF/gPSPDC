@@ -51,7 +51,10 @@ u32 function_cc execute_mov(u32 rm);
 u32 function_cc execute_movs(u32 rm);
 u32 function_cc execute_mul_flags(u32 dest);
 u32 function_cc execute_mul_long_flags(u32 dest_lo, u32 dest_hi);
-void function_cc execute_mul_long_regs(u32 rm, u32 rs, u32 acc_lo, u32 acc_hi);
+void function_cc execute_mul_long_regs_s64(u32 rm, u32 rs, u32 acc_lo,
+ u32 acc_hi);
+void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,
+ u32 acc_hi);
 void function_cc execute_mul_long_s64(u32 rm, u32 rs);
 void function_cc execute_mul_long_u64(u32 rm, u32 rs);
 u32 function_cc execute_mul_regs(u32 rm, u32 rs);
@@ -129,7 +132,6 @@ typedef struct
 {
   u32 branch_target;
   u8 *branch_source;
-  u32 *branch_literal;
 } external_block_exit_type;
 
 #ifdef PSP_BUILD
@@ -3437,13 +3439,6 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
        branch_target;                                                         \
       external_block_exits[external_block_exit_position].branch_source =      \
        block_exits[i].branch_source;                                          \
-      if(!sh4_branch12_in_range(block_exits[i].branch_source,                 \
-       translation_ptr))                                                       \
-        return -1;                                                            \
-      generate_branch_patch_unconditional_direct(                             \
-       block_exits[i].branch_source, translation_ptr);                        \
-      SH4_EMIT_ABSOLUTE_JUMP_VENEER(0,                                        \
-       external_block_exits[external_block_exit_position].branch_literal);     \
       external_block_exit_position++;                                         \
     }                                                                         \
   }                                                                           \
@@ -3485,7 +3480,8 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     type##_link_block();                                                      \
     if(translation_target == NULL)                                            \
       return -1;                                                              \
-    *external_block_exits[i].branch_literal = (u32)translation_target;         \
+    generate_branch_patch_unconditional(                                      \
+     external_block_exits[i].branch_source, translation_target);              \
   }                                                                           \
                                                                               \
   return 0;                                                                   \

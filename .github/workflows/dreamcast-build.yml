@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run host contract tests
         run: make -C tests test
+      - name: Ensure a fresh ELF is built
+        run: rm -f dc/gdC.elf
       - name: Cross-compile gdC.elf
         run: ./scripts/dc-build.sh
       - name: Verify gdC.elf

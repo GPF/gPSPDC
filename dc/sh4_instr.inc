@@ -491,10 +491,14 @@
 
 #define arm_multiply_long_flags_no(_dest)                                     \
 
+/* execute_mul_long_regs(rm, rs, acc_lo, acc_hi) takes its arguments in      \
+   r4/r5/r6/r7 per the SH-4 ABI: the accumulator high word must be loaded    \
+   into a3 (r7).  Loading it into s0 (r14) left r7 garbage, corrupting the   \
+   high word of every SMLAL/UMLAL. */                                        \
 #define arm_multiply_long_add_yes(name)                                       \
   generate_load_reg(a2, rdlo);                                                \
-  generate_load_reg(s0, rdhi);                                                \
-  generate_multiply_##name(a1, a2, s0)                                        \
+  generate_load_reg(a3, rdhi);                                                \
+  generate_multiply_##name(a1, a2, a3)                                        \
 
 #define arm_multiply_long_add_no(name)                                        \
   generate_multiply_##name(a1)                                                \
@@ -520,11 +524,16 @@
 #define arm_psr_load_new_imm()                                                \
   generate_load_imm(a0, imm)                                                  \
 
+/* execute_store_cpsr returns the IRQ vector (non-zero) when the new CPSR    \
+   unmasks a pending IRQ, else 0.  Dispatch to the vector only when r0 != 0;  \
+   skip past the dispatch when r0 == 0 (T == 1 after tst), i.e. COND_SKIP_T.  \
+   The old BF skipped when r0 != 0, branching to a null block on every other  \
+   CPSR store. */                                                             \
 #define arm_psr_store_cpsr_post()                                             \
   do {                                                                        \
     u8 *_skip_irq;                                                            \
     SH4_EMIT_TST_REG(sh4_reg_r0);                                             \
-    SH4_EMIT_BF_FILLER(_skip_irq);                                            \
+    SH4_EMIT_COND_SKIP_T(_skip_irq);                                          \
     SH4_EMIT_MOV(sh4_reg_r4, sh4_reg_r0);                                     \
     generate_indirect_branch_arm();                                           \
     generate_branch_patch_conditional(_skip_irq, translation_ptr);            \
@@ -589,7 +598,7 @@
 #define arm_access_memory_store(mem_type)                                     \
   generate_load_reg_pc(a1, rd, 12);                                           \
   generate_load_pc(a2, (pc + 4));                                             \
-  generate_function_call(execute_store_##mem_type)                            \
+  generate_store_call(mem_type)                            \
 
 #define no_op                                                                 \
 
@@ -720,7 +729,7 @@
   generate_load_reg(a0, rn);                                                  \
   generate_load_reg(a1, rm);                                                  \
   generate_load_pc(a2, (pc + 4));                                             \
-  generate_function_call(execute_store_##type);                               \
+  generate_store_call(type);                                                  \
   generate_store_reg(s0, rd);                                                 \
 }                                                                             \
 
@@ -859,7 +868,7 @@
 #define thumb_access_memory_store(mem_type, reg_rd)                           \
   generate_load_reg(a1, reg_rd);                                              \
   generate_load_pc(a2, (pc + 2));                                             \
-  generate_function_call(execute_store_##mem_type)                            \
+  generate_store_call(mem_type)                            \
 
 #define thumb_access_memory_generate_address_pc_relative(offset, reg_rb,      \
  reg_ro)                                                                      \
@@ -945,7 +954,7 @@
 #define thumb_block_memory_final_store()                                      \
   generate_load_reg(a1, i);                                                   \
   generate_load_pc(a2, (pc + 2));                                             \
-  generate_function_call(execute_store_u32)                                   \
+  generate_store_call(u32)                                   \
 
 #define thumb_block_memory_final_no(access_type)                              \
   thumb_block_memory_final_##access_type()                                    \
@@ -1085,10 +1094,7 @@ data_proc_generate_add_test_function(cmn, rn, rm);
 
 #define arm_swi()                                                             \
   generate_swi_hle_handler((opcode >> 16) & 0xFF);                            \
-  generate_load_imm(a0, ((opcode >> 16) & 0xFF));                             \
-  generate_load_imm(a1, (pc + 4));                                            \
-  generate_load_imm(a2, 0);                                                   \
-  generate_function_call(sh4_trace_swi);                                      \
+  generate_swi_trace(((opcode >> 16) & 0xFF), (pc + 4), 0);                   \
   generate_update_pc((pc + 4));                                               \
   generate_function_call(execute_swi);                                        \
   generate_branch()                                                           \
@@ -1127,10 +1133,7 @@ data_proc_generate_add_test_function(cmn, rn, rm);
 
 #define thumb_swi()                                                           \
   generate_swi_hle_handler(opcode & 0xFF);                                    \
-  generate_load_imm(a0, (opcode & 0xFF));                                     \
-  generate_load_imm(a1, (pc + 2));                                            \
-  generate_load_imm(a2, 1);                                                   \
-  generate_function_call(sh4_trace_swi);                                      \
+  generate_swi_trace((opcode & 0xFF), (pc + 2), 1);                           \
   generate_update_pc((pc + 2));                                               \
   generate_function_call(execute_swi);                                        \
   generate_branch_cycle_update(                                               \

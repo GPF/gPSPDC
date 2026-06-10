@@ -103,17 +103,22 @@ static void test_sh4_stub_async_exit_contract(void)
   if(text == NULL)
     return;
 
-  expect_contains("cycle reload helper", text,
-   "static inline void sh4_reload_cycles(u32 cycles)");
-  expect_contains("cycle reload register", text, "mov %0, r13");
-  expect_count("cycle reload call sites", text, "sh4_reload_cycles(cycles);",
-   4);
+  expect_contains("dispatch stack base", text, "static u32 sh4_dispatch_stack;");
+  expect_contains("dispatch stack reset", text, "mov %[stk], r15");
+  expect_contains("dispatch cycle reload", text, "mov %[cyc], r13");
+  expect_contains("dispatch stack capture", text,
+   "__asm__ __volatile__(\"mov r15, %0\" : \"=r\" (sh4_dispatch_stack));");
+  expect_count("dispatch lookup call sites", text, "sh4_lookup_pc(cycles);",
+   10);
   expect_count("update_gba cycle capture", text, "cycles = update_gba();",
    4);
   expect_count("old store update_gba result capture", text,
    "result = update_gba();", 0);
-  expect_count("shared pc lookup helper", text, "static void sh4_lookup_pc(void)",
-   1);
+  expect_count("old leaking pc lookup helper", text,
+   "static void sh4_lookup_pc(void)", 0);
+  expect_count("old direct block call", text, "((void (*)(void))", 0);
+  expect_contains("dcache writeback before icache flush", text,
+   "dcache_flush_range(addr, size);");
   expect_contains("dynarec entry jump delay slot", text,
    "\"jmp @%[tgt]\\n\\t\"\n    \"nop\\n\\t\"");
 
@@ -158,6 +163,14 @@ static void test_sh4_helpers_irq_contract(void)
    "irq_pc = sh4_take_pending_irq(address);");
   expect_count("old broken check_for_interrupts macro", text,
    "#define check_for_interrupts()", 0);
+  expect_contains("stm pc stores pc+8", text,
+   "execute_aligned_store32(address, insn_pc + 8);");
+  expect_contains("smlal signed product", text,
+   "u64 result = (u64)((s64)(s32)rm * (s32)rs) + (((u64)acc_hi) << 32) + acc_lo;");
+  expect_contains("umlal unsigned helper", text,
+   "void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,");
+  expect_count("old shared mul long accumulate helper", text,
+   "execute_mul_long_regs(u32", 0);
 
   free(text);
   if(failures == failures_before)
@@ -179,10 +192,18 @@ static void test_sh4_psr_store_contract(void)
   expect_contains("cpsr store pc arg", text, "generate_load_pc(a2, pc);");
   expect_contains("cpsr irq indirect branch", text,
    "generate_indirect_branch_arm();");
+  expect_contains("cpsr irq skip when no irq", text,
+   "SH4_EMIT_COND_SKIP_T(_skip_irq);");
+  expect_count("cpsr irq inverted skip removed", text,
+   "SH4_EMIT_BF_FILLER(_skip_irq)", 0);
   expect_count("duplicate arm_psr_store_finish macro", text,
    "#define arm_psr_store_finish(", 0);
   expect_contains("dynarec block memory helper call", text,
    "generate_function_call(execute_arm_block_memory)");
+  expect_contains("mul long acc_hi in fourth arg reg", text,
+   "generate_load_reg(a3, rdhi);");
+  expect_count("mul long acc_hi in callee-saved reg", text,
+   "generate_load_reg(s0, rdhi);", 0);
 
   free(text);
   if(failures == failures_before)
