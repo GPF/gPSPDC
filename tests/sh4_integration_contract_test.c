@@ -103,17 +103,22 @@ static void test_sh4_stub_async_exit_contract(void)
   if(text == NULL)
     return;
 
-  expect_contains("cycle reload helper", text,
-   "static inline void sh4_reload_cycles(u32 cycles)");
-  expect_contains("cycle reload register", text, "mov %0, r13");
-  expect_count("cycle reload call sites", text, "sh4_reload_cycles(cycles);",
-   4);
+  expect_contains("dispatch stack base", text, "static u32 sh4_dispatch_stack;");
+  expect_contains("dispatch stack reset", text, "mov %[stk], r15");
+  expect_contains("dispatch cycle reload", text, "mov %[cyc], r13");
+  expect_contains("dispatch stack capture", text,
+   "__asm__ __volatile__(\"mov r15, %0\" : \"=r\" (sh4_dispatch_stack));");
+  expect_count("dispatch lookup call sites", text, "sh4_lookup_pc(cycles);",
+   10);
   expect_count("update_gba cycle capture", text, "cycles = update_gba();",
    4);
   expect_count("old store update_gba result capture", text,
    "result = update_gba();", 0);
-  expect_count("shared pc lookup helper", text, "static void sh4_lookup_pc(void)",
-   1);
+  expect_count("old leaking pc lookup helper", text,
+   "static void sh4_lookup_pc(void)", 0);
+  expect_count("old direct block call", text, "((void (*)(void))", 0);
+  expect_contains("dcache writeback before icache flush", text,
+   "dcache_flush_range(addr, size);");
   expect_contains("dynarec entry jump delay slot", text,
    "\"jmp @%[tgt]\\n\\t\"\n    \"nop\\n\\t\"");
 

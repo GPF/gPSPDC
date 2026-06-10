@@ -589,7 +589,7 @@
 #define arm_access_memory_store(mem_type)                                     \
   generate_load_reg_pc(a1, rd, 12);                                           \
   generate_load_pc(a2, (pc + 4));                                             \
-  generate_function_call(execute_store_##mem_type)                            \
+  generate_store_call(mem_type)                            \
 
 #define no_op                                                                 \
 
@@ -720,7 +720,7 @@
   generate_load_reg(a0, rn);                                                  \
   generate_load_reg(a1, rm);                                                  \
   generate_load_pc(a2, (pc + 4));                                             \
-  generate_function_call(execute_store_##type);                               \
+  generate_store_call(type);                                                  \
   generate_store_reg(s0, rd);                                                 \
 }                                                                             \
 
@@ -859,7 +859,7 @@
 #define thumb_access_memory_store(mem_type, reg_rd)                           \
   generate_load_reg(a1, reg_rd);                                              \
   generate_load_pc(a2, (pc + 2));                                             \
-  generate_function_call(execute_store_##mem_type)                            \
+  generate_store_call(mem_type)                            \
 
 #define thumb_access_memory_generate_address_pc_relative(offset, reg_rb,      \
  reg_ro)                                                                      \
@@ -945,7 +945,7 @@
 #define thumb_block_memory_final_store()                                      \
   generate_load_reg(a1, i);                                                   \
   generate_load_pc(a2, (pc + 2));                                             \
-  generate_function_call(execute_store_u32)                                   \
+  generate_store_call(u32)                                   \
 
 #define thumb_block_memory_final_no(access_type)                              \
   thumb_block_memory_final_##access_type()                                    \
@@ -1085,10 +1085,7 @@ data_proc_generate_add_test_function(cmn, rn, rm);
 
 #define arm_swi()                                                             \
   generate_swi_hle_handler((opcode >> 16) & 0xFF);                            \
-  generate_load_imm(a0, ((opcode >> 16) & 0xFF));                             \
-  generate_load_imm(a1, (pc + 4));                                            \
-  generate_load_imm(a2, 0);                                                   \
-  generate_function_call(sh4_trace_swi);                                      \
+  generate_swi_trace(((opcode >> 16) & 0xFF), (pc + 4), 0);                   \
   generate_update_pc((pc + 4));                                               \
   generate_function_call(execute_swi);                                        \
   generate_branch()                                                           \
@@ -1127,10 +1124,7 @@ data_proc_generate_add_test_function(cmn, rn, rm);
 
 #define thumb_swi()                                                           \
   generate_swi_hle_handler(opcode & 0xFF);                                    \
-  generate_load_imm(a0, (opcode & 0xFF));                                     \
-  generate_load_imm(a1, (pc + 2));                                            \
-  generate_load_imm(a2, 1);                                                   \
-  generate_function_call(sh4_trace_swi);                                      \
+  generate_swi_trace((opcode & 0xFF), (pc + 2), 1);                           \
   generate_update_pc((pc + 2));                                               \
   generate_function_call(execute_swi);                                        \
   generate_branch_cycle_update(                                               \
