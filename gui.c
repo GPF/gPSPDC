@@ -1008,6 +1008,7 @@ u32 menu(u16 *original_screen)
   auto void choose_menu();
   auto void clear_help();
   auto void menu_update_savestate_preview();
+  auto void submenu_savestate();
 
   u8 *gamepad_help[] =
   {
@@ -1102,7 +1103,8 @@ u32 menu(u16 *original_screen)
 
   void menu_update_savestate_preview()
   {
-    if(!savestate_preview_dirty || current_menu != &savestate_menu)
+    if(!savestate_preview_dirty || current_menu->init_function !=
+     submenu_savestate)
       return;
 
     get_savestate_snapshot(current_savestate_filename);

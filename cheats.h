@@ -17,6 +17,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef CHEATS_H
+#define CHEATS_H
+
 #define CHEAT_NAME_LENGTH 17
 
 typedef enum
@@ -47,3 +50,5 @@ extern u32 num_cheats;
 extern u32 cheat_master_hooks[MAX_CHEAT_HOOKS];
 extern u32 cheat_num_master_hooks;
 extern u32 cheat_master_hook;
+
+#endif

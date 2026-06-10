@@ -19,8 +19,15 @@ ASFLAGS         = ${CFLAGS}
 PSP_EBOOT_TITLE = gpSP
 EXTRA_TARGETS   = EBOOT.PBP
 
+ifeq ($(USE_MINIZ),1)
+CFLAGS          += -DGPSP_USE_MINIZ
+ZIP_LIBS        =
+else
+ZIP_LIBS        = -lz
+endif
+
 LIBS            += ${shell ${PREFIX}/bin/sdl-config --libs} -lpsppower \
-		  -lz
+		  ${ZIP_LIBS}
 
 include ${PSPSDK}/lib/build.mak
 

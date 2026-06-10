@@ -188,6 +188,7 @@ Unified gamepak swap paging in `memory.c`:
 | **6** | Release verification | Small | Version, smoke-test doc, CI, menu errors ✓ |
 | **7** | Stable build | Small | KOS cross-compile CI, romdisk, docker helper ✓ |
 | **8** | Audio/sprite/build/menu polish | Small | Correctness, build hygiene, menu responsiveness ✓ |
+| **10** | External validation track | Medium | MIT regression packs, CPU parity tests, ZIP/UI dependency audits |
 
 ```mermaid
 flowchart TD
@@ -201,7 +202,22 @@ flowchart TD
     H --> I[Phase 6: Release verification]
     I --> J[Phase 7: Stable build CI]
     J --> K[Phase 8: Audio/sprite/build/menu polish]
+    K --> L[Phase 10: External validation track]
 ```
+
+---
+
+## Phase 10 — External validation track (P0–P4)
+
+**Status:** Planned / scaffolded
+
+- **P0:** `jsmolka/gba-tests` plus `SingleStepTests/ARM7TDMI` for CPU, memory, save, BIOS, PPU, and interpreter/dynarec parity checks
+- **P1:** `miniz` vendored as an optional ZIP inflate backend behind `USE_MINIZ=1`, for lower-heap experiments before replacing the default zlib path
+- **P2:** `stb_easy_font` / `stb_image_resize` only if menu/error readability or asset scaling needs a tiny dependency
+- **P3:** `SkyEmu`, `rustboyadvance-ng`, and `gba-kit` as read-only references for hard-game, backup-media, bus, DMA, and timer audits
+- **P4:** KOS / `mkdcdisc` pinning notes for easier contributor builds
+
+See [EXTERNAL_VALIDATION.md](EXTERNAL_VALIDATION.md) and run `sh scripts/fetch-external-validation.sh`.
 
 ---
 

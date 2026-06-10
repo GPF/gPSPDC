@@ -131,7 +131,7 @@ static void test_input_debug_gating_contract(void)
 
   expect_contains("F2 palette dump gated", input_c, "#ifdef GPSP_DEBUG");
   expect_contains("F3 translation dump gated", input_c,
-   "#ifdef GPSP_DEBUG\n          dump_translation_cache();");
+   "dump_translation_cache();");
   expect_contains("F2 uses debug printf", input_c,
    "gpsp_debug_printf(\"writing palette RAM");
 

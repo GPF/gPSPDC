@@ -17,7 +17,13 @@ BIN       = gpsp.exe
 VPATH      += ..
 CFLAGS     += 
 INCLUDES   = -I${PREFIX}/include `sdl-config --cflags`
-LIBS       = -L${PREFIX}/lib `sdl-config --libs` -mconsole -lz
+ifeq ($(USE_MINIZ),1)
+CFLAGS     += -DGPSP_USE_MINIZ
+ZIP_LIBS   =
+else
+ZIP_LIBS   = -lz
+endif
+LIBS       = -L${PREFIX}/lib `sdl-config --libs` -mconsole ${ZIP_LIBS}
 
 # Compilation:
 

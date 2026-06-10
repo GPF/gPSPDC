@@ -358,8 +358,12 @@ static const u32 button_id_to_gba_mask[] =
 };
 
 #ifdef _arch_dreamcast
+#include <dc/maple.h>
+#include <dc/maple/controller.h>
 
 #define DC_CONFIG_BUTTON_COUNT 12
+#define DC_ANALOG_THRESHOLD 32
+#define DC_TRIGGER_THRESHOLD 32
 
 static u32 dc_button_held = 0;
 static u32 dc_button_last = 0;
@@ -445,6 +449,59 @@ static void dc_joy_button_set(u32 button, u32 down)
     dc_button_held |= bit;
   else
     dc_button_held &= ~bit;
+}
+
+static u32 dc_poll_maple_button_mask()
+{
+  maple_device_t *dev;
+  cont_state_t *state;
+  u32 mask = 0;
+
+  dev = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
+  if(dev == NULL)
+    return 0;
+
+  state = (cont_state_t *)maple_dev_status(dev);
+  if(state == NULL)
+    return 0;
+
+  if(state->buttons & CONT_Y)
+    mask |= 1 << 0;
+
+  if(state->buttons & CONT_A)
+    mask |= 1 << 1;
+
+  if(state->buttons & CONT_B)
+    mask |= 1 << 2;
+
+  if(state->buttons & CONT_X)
+    mask |= 1 << 3;
+
+  if(state->ltrig > DC_TRIGGER_THRESHOLD)
+    mask |= 1 << 4;
+
+  if(state->rtrig > DC_TRIGGER_THRESHOLD)
+    mask |= 1 << 5;
+
+  if((state->buttons & CONT_DPAD_DOWN) || state->joyy > DC_ANALOG_THRESHOLD)
+    mask |= 1 << 6;
+
+  if((state->buttons & CONT_DPAD_LEFT) || state->joyx < -DC_ANALOG_THRESHOLD)
+    mask |= 1 << 7;
+
+  if((state->buttons & CONT_DPAD_UP) || state->joyy < -DC_ANALOG_THRESHOLD)
+    mask |= 1 << 8;
+
+  if((state->buttons & CONT_DPAD_RIGHT) || state->joyx > DC_ANALOG_THRESHOLD)
+    mask |= 1 << 9;
+
+  if(state->buttons & CONT_D)
+    mask |= 1 << 10;
+
+  if(state->buttons & CONT_START)
+    mask |= 1 << 11;
+
+  return mask;
 }
 
 static u32 dc_process_special_button(u32 button_id)
@@ -708,6 +765,7 @@ gui_action_type get_gui_input()
 
 #ifdef _arch_dreamcast
   u32 new_buttons = 0;
+  u32 gui_held = 0;
 
   while(SDL_PollEvent(&event))
   {
@@ -717,8 +775,9 @@ gui_action_type get_gui_input()
     dc_gui_apply_event(&event);
   }
 
-  new_buttons = gui_dc_held & ~gui_dc_repeat_mask;
-  gui_dc_repeat_mask = gui_dc_held;
+  gui_held = gui_dc_held | dc_poll_maple_button_mask();
+  new_buttons = gui_held & ~gui_dc_repeat_mask;
+  gui_dc_repeat_mask = gui_held;
 
   if(new_buttons)
   {
@@ -729,7 +788,7 @@ gui_action_type get_gui_input()
   }
   else
 
-  if(gui_dc_held & ((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)))
+  if(gui_held & ((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)))
   {
     u64 new_ticks;
     get_ticks_us(&new_ticks);
@@ -854,6 +913,7 @@ u32 update_input()
   SDL_Event event;
   u32 new_buttons;
   u32 new_key = 0;
+  u32 held_buttons;
   u32 i;
   u32 special_result;
 
@@ -923,8 +983,9 @@ u32 update_input()
     }
   }
 
-  new_buttons = (dc_button_last ^ dc_button_held) & dc_button_held;
-  dc_button_last = dc_button_held;
+  held_buttons = dc_button_held | dc_poll_maple_button_mask();
+  new_buttons = (dc_button_last ^ held_buttons) & held_buttons;
+  dc_button_last = held_buttons;
 
   for(i = 0; i < DC_CONFIG_BUTTON_COUNT; i++)
   {
@@ -939,7 +1000,7 @@ u32 update_input()
 
   for(i = 0; i < DC_CONFIG_BUTTON_COUNT; i++)
   {
-    if(dc_button_held & (1 << i))
+    if(held_buttons & (1 << i))
     {
       u32 button_id = gamepad_config_map[i];
 

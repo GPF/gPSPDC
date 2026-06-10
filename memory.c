@@ -2160,7 +2160,7 @@ s32 load_gamepak_raw(char *name)
 
   if(file_check_valid(gamepak_file))
   {
-    u32 gamepak_size = file_length(name, gamepak_file);
+    u32 gamepak_size = file_length(open_path, gamepak_file);
 
     // First, close the last one if it was open, we won't
     // be needing it anymore.
@@ -3083,9 +3083,6 @@ void init_gamepak_buffer()
   {
     static const u32 dc_buffer_sizes[] =
     {
-      16 * 1024 * 1024,
-      12 * 1024 * 1024,
-      8 * 1024 * 1024,
       4 * 1024 * 1024,
       0
     };
@@ -3098,7 +3095,7 @@ void init_gamepak_buffer()
     }
 
     if(gamepak_rom == NULL)
-      try_gamepak_buffer_alloc(4 * 1024 * 1024);
+      return;
   }
 #else
   if(!try_gamepak_buffer_alloc(32 * 1024 * 1024))

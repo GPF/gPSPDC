@@ -23,6 +23,67 @@
 
 #ifdef _arch_dreamcast
 void gpsp_dynarec_fatal_error(const char *detail);
+u32 function_cc execute_adc(u32 rm, u32 rn);
+u32 function_cc execute_add(u32 rm, u32 rn);
+u32 function_cc execute_adds(u32 rm, u32 rn);
+u32 function_cc execute_adcs(u32 rm, u32 rn);
+u32 function_cc execute_and(u32 rm, u32 rn);
+u32 function_cc execute_ands(u32 rm, u32 rn);
+u32 function_cc execute_asr_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_asr_imm_op(u32 value, u32 shift);
+u32 function_cc execute_asr_no_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_asr_reg_op(u32 value, u32 shift);
+u32 function_cc execute_bic(u32 rm, u32 rn);
+u32 function_cc execute_bics(u32 rm, u32 rn);
+void function_cc execute_cmn(u32 rm, u32 rn);
+void function_cc execute_cmp(u32 rm, u32 rn);
+u32 function_cc execute_eor(u32 rm, u32 rn);
+u32 function_cc execute_eors(u32 rm, u32 rn);
+u32 function_cc execute_lsl_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_lsl_imm_op(u32 value, u32 shift);
+u32 function_cc execute_lsl_no_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_lsl_reg_op(u32 value, u32 shift);
+u32 function_cc execute_lsr_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_lsr_imm_op(u32 value, u32 shift);
+u32 function_cc execute_lsr_no_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_lsr_reg_op(u32 value, u32 shift);
+u32 function_cc execute_mov(u32 rm);
+u32 function_cc execute_movs(u32 rm);
+u32 function_cc execute_mul_flags(u32 dest);
+u32 function_cc execute_mul_long_flags(u32 dest_lo, u32 dest_hi);
+void function_cc execute_mul_long_regs(u32 rm, u32 rs, u32 acc_lo, u32 acc_hi);
+void function_cc execute_mul_long_s64(u32 rm, u32 rs);
+void function_cc execute_mul_long_u64(u32 rm, u32 rs);
+u32 function_cc execute_mul_regs(u32 rm, u32 rs);
+u32 function_cc execute_muls(u32 rm, u32 rn);
+u32 function_cc execute_mvn(u32 rm);
+u32 function_cc execute_mvns(u32 rm);
+u32 function_cc execute_neg(u32 rm);
+u32 function_cc execute_orr(u32 rm, u32 rn);
+u32 function_cc execute_orrs(u32 rm, u32 rn);
+u32 function_cc execute_read_cpsr(void);
+u32 function_cc execute_read_spsr(void);
+u32 function_cc execute_ror_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_ror_reg_op(u32 value, u32 shift);
+u32 function_cc execute_ror_no_flags_reg(u32 value, u32 shift);
+u32 function_cc execute_rrx(u32 value);
+u32 function_cc execute_rrx_flags(u32 value);
+u32 function_cc execute_rsb(u32 rm, u32 rn);
+u32 function_cc execute_rsbs(u32 rm, u32 rn);
+u32 function_cc execute_rsc(u32 rm, u32 rn);
+u32 function_cc execute_rscs(u32 rm, u32 rn);
+u32 function_cc execute_sbc(u32 rm, u32 rn);
+u32 function_cc execute_sbcs(u32 rm, u32 rn);
+u32 function_cc execute_spsr_restore(u32 address);
+u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc);
+void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask);
+u32 function_cc execute_sub(u32 rm, u32 rn);
+u32 function_cc execute_subs(u32 rm, u32 rn);
+void function_cc execute_teq(u32 rm, u32 rn);
+void function_cc execute_tst(u32 rm, u32 rn);
+u32 function_cc execute_aligned_load32(u32 address);
+void function_cc execute_aligned_store32(u32 address, u32 source);
+void function_cc execute_swi(u32 pc);
 #endif
 
 u8 rom_translation_cache[ROM_TRANSLATION_CACHE_SIZE];
@@ -63,6 +124,13 @@ typedef struct
   u32 branch_target;
   u8 *branch_source;
 } block_exit_type;
+
+typedef struct
+{
+  u32 branch_target;
+  u8 *branch_source;
+  u32 *branch_literal;
+} external_block_exit_type;
 
 #ifdef PSP_BUILD
 
@@ -2257,18 +2325,20 @@ extern u8 bit_count[256];
       break;                                                                  \
                                                                               \
     case 0xB0 ... 0xB3:                                                       \
-    thumb_decode_add_sp();                                                  \
-    if((opcode >> 7) & 0x01)                                                \
-    {                                                                       \
-      /* ADD sp, -imm */                                                    \
-      thumb_adjust_sp(-(imm * 4));                                          \
-    }                                                                       \
-    else                                                                    \
-    {                                                                       \
-      /* ADD sp, +imm */                                                    \
-      thumb_adjust_sp((imm * 4));                                           \
-    }                                                                       \
-    break;                                                                  \
+    {                                                                         \
+      thumb_decode_add_sp();                                                  \
+      if((opcode >> 7) & 0x01)                                                \
+      {                                                                       \
+        /* ADD sp, -imm */                                                    \
+        thumb_adjust_sp(-(imm * 4));                                          \
+      }                                                                       \
+      else                                                                    \
+      {                                                                       \
+        /* ADD sp, +imm */                                                    \
+        thumb_adjust_sp((imm * 4));                                           \
+      }                                                                       \
+      break;                                                                  \
+    }                                                                         \
                                                                               \
     case 0xB4:                                                                \
       /* PUSH rlist */                                                        \
@@ -2457,16 +2527,14 @@ extern u8 bit_count[256];
     case 0xF0 ... 0xF7:                                                       \
     {                                                                         \
       /* (low word) BL label */                                               \
-      /* This should possibly generate code if not in conjunction with a BLH  \
-         next, but I don't think anyone will do that. */                      \
+      /* Low BL without following BLH is ignored. */                          \
       break;                                                                  \
     }                                                                         \
                                                                               \
     case 0xF8 ... 0xFF:                                                       \
     {                                                                         \
       /* (high word) BL label */                                              \
-      /* This might not be preceeding a BL low word (Golden Sun 2), if so     \
-         it must be handled like an indirect branch. */                       \
+      /* High BL without prior low BL is handled as an indirect branch. */    \
       if((last_opcode >= 0xF000) && (last_opcode < 0xF800))                   \
       {                                                                       \
         thumb_bl();                                                           \
@@ -2697,6 +2765,19 @@ u32 bios_block_tag_top = 0x0101;
   else                                                                        \
     fill_tag_arm(mem_type)                                                    \
 
+#ifdef _arch_dreamcast
+#define dynarec_retry_fatal(buffer) gpsp_dynarec_fatal_error(buffer)
+#define dynarec_bad_jump_fatal(buffer) gpsp_dynarec_fatal_error(buffer)
+#else
+#define dynarec_retry_fatal(buffer) ((void)(buffer))
+#define dynarec_bad_jump_fatal(buffer) do {                                   \
+  print_string(buffer, 0, 0, 0xFFFF, 0x0000);                                 \
+  update_screen();                                                            \
+  delay_us(5000000);                                                          \
+  quit();                                                                     \
+} while(0)
+#endif
+
 #define block_lookup_translate(instruction_type, mem_type, smc_enable)        \
   block_tag = *location;                                                      \
   if((block_tag < 0x0101) || (block_tag == 0xFFFF))                           \
@@ -2712,9 +2793,7 @@ u32 bios_block_tag_top = 0x0101;
       {                                                                       \
         char buffer[64];                                                      \
         sprintf(buffer, "translation retry limit at %x", pc);                \
-#ifdef _arch_dreamcast                                                         \
-        gpsp_dynarec_fatal_error(buffer);                                     \
-#endif                                                                         \
+        dynarec_retry_fatal(buffer);                                          \
       }                                                                       \
       return NULL;                                                            \
     }                                                                         \
@@ -2728,8 +2807,7 @@ u32 bios_block_tag_top = 0x0101;
     block_lookup_translate_##instruction_type(mem_type, smc_enable);          \
     translation_recursion_level--;                                            \
                                                                               \
-    /* If the translation failed then pass that failure on if we're in        \
-       a recursive level, or try again if we've hit the bottom. */            \
+    /* Failed recursive translations bubble up; top-level retries. */         \
     if(translation_result == -1)                                              \
     {                                                                         \
       if(translation_recursion_level)                                         \
@@ -2818,8 +2896,7 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
         block_lookup_translate_##type(rom, 0);                                \
         translation_recursion_level--;                                        \
                                                                               \
-        /* If the translation failed then pass that failure on if we're in    \
-         a recursive level, or try again if we've hit the bottom. */          \
+        /* Failed recursive translations bubble up; top-level retries. */     \
         if(translation_result == -1)                                          \
         {                                                                     \
           if(translation_recursion_level)                                     \
@@ -2836,27 +2913,14 @@ u8 function_cc *block_lookup_address_##type(u32 pc)                           \
     }                                                                         \
                                                                               \
     default:                                                                  \
-      /* If we're at the bottom, it means we're actually trying to jump to an \
-         address that we can't handle. Otherwise, it means that code scanned  \
-         has reached an address that can't be handled, which means that we    \
-         have most likely hit an area that doesn't contain code yet (for      \
-         instance, in RAM). If such a thing happens, return -1 and the        \
-         block translater will naively link it (it'll be okay, since it       \
-         should never be hit) */                                              \
+      /* Top-level bad jumps are fatal; recursive bad jumps become stubs. */  \
       if(translation_recursion_level == 0)                                    \
       {                                                                       \
         char buffer[256];                                                     \
         sprintf(buffer, "bad jump %x (%x) (%x)", pc, reg[REG_PC],             \
          last_instruction);                                                   \
         printf("%s\n", buffer);                                               \
-#ifdef _arch_dreamcast                                                         \
-        gpsp_dynarec_fatal_error(buffer);                                     \
-#else                                                                          \
-        print_string(buffer, 0, 0, 0xFFFF, 0x0000);                           \
-        update_screen();                                                      \
-        delay_us(5000000);                                                    \
-        quit();                                                               \
-#endif                                                                         \
+        dynarec_bad_jump_fatal(buffer);                                       \
       }                                                                       \
       block_address = (u8 *)(-1);                                             \
       break;                                                                  \
@@ -3129,13 +3193,11 @@ block_exit_type block_exits[MAX_EXITS];
         block_exits[block_exit_position].branch_target = branch_target;       \
         block_exit_position++;                                                \
                                                                               \
-        /* Give the branch target macro somewhere to bail if it turns out to  \
-           be an indirect branch (ala malformed Thumb bl) */                  \
+        /* Give branch target translation somewhere to bail out. */           \
         no_direct_branch:;                                                    \
       }                                                                       \
                                                                               \
-      /* SWI branches to the BIOS, this will likely change when               \
-         some HLE BIOS is implemented. */                                     \
+      /* SWI branches to the BIOS until HLE BIOS is implemented. */           \
       if(type##_opcode_swi)                                                   \
       {                                                                       \
         block_exits[block_exit_position].branch_target = 0x00000008;          \
@@ -3212,11 +3274,11 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
   u32 cycle_count = 0;                                                        \
   u8 *translation_target;                                                     \
   u8 *backpatch_address;                                                      \
-  u8 *translation_ptr;                                                        \
-  u8 *translation_cache_limit;                                                \
+  translation_ptr_t translation_ptr;                                          \
+  translation_ptr_t translation_cache_limit;                                  \
   s32 i;                                                                      \
   u32 flag_status;                                                            \
-  block_exit_type external_block_exits[MAX_EXITS];                            \
+  external_block_exit_type external_block_exits[MAX_EXITS];                   \
   generate_block_extra_vars_##type();                                         \
   type##_fix_pc();                                                            \
                                                                               \
@@ -3239,23 +3301,23 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
           ewram_code_min = pc;                                                \
       }                                                                       \
                                                                               \
-      translation_ptr = ram_translation_ptr;                                  \
+      translation_ptr = (translation_ptr_t)ram_translation_ptr;               \
       translation_cache_limit =                                               \
-       ram_translation_cache + RAM_TRANSLATION_CACHE_SIZE -                   \
-       TRANSLATION_CACHE_LIMIT_THRESHOLD;                                     \
+       (translation_ptr_t)(ram_translation_cache +                            \
+       RAM_TRANSLATION_CACHE_SIZE - TRANSLATION_CACHE_LIMIT_THRESHOLD);       \
       break;                                                                  \
                                                                               \
     case TRANSLATION_REGION_ROM:                                              \
-      translation_ptr = rom_translation_ptr;                                  \
+      translation_ptr = (translation_ptr_t)rom_translation_ptr;               \
       translation_cache_limit =                                               \
-       rom_translation_cache + ROM_TRANSLATION_CACHE_SIZE -                   \
-       TRANSLATION_CACHE_LIMIT_THRESHOLD;                                     \
+       (translation_ptr_t)(rom_translation_cache +                            \
+       ROM_TRANSLATION_CACHE_SIZE - TRANSLATION_CACHE_LIMIT_THRESHOLD);       \
       break;                                                                  \
                                                                               \
     case TRANSLATION_REGION_BIOS:                                             \
-      translation_ptr = bios_translation_ptr;                                 \
-      translation_cache_limit = bios_translation_cache +                      \
-       BIOS_TRANSLATION_CACHE_SIZE;                                           \
+      translation_ptr = (translation_ptr_t)bios_translation_ptr;              \
+      translation_cache_limit = (translation_ptr_t)(bios_translation_cache +  \
+       BIOS_TRANSLATION_CACHE_SIZE);                                          \
       break;                                                                  \
   }                                                                           \
                                                                               \
@@ -3295,7 +3357,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
                                                                               \
   while(pc != block_end_pc)                                                   \
   {                                                                           \
-    block_data[block_data_position].block_offset = translation_ptr;           \
+    block_data[block_data_position].block_offset = (u8 *)translation_ptr;     \
     type##_base_cycles();                                                     \
     /*generate_step_debug();*/                                                \
                                                                               \
@@ -3311,10 +3373,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     translate_##type##_instruction();                                         \
     block_data_position++;                                                    \
                                                                               \
-    /* If it went too far the cache needs to be flushed and the process       \
-       restarted. Because we might already be nested several stages in        \
-       a simple recursive call here won't work, it has to pedal out to        \
-       the beginning. */                                                      \
+    /* Flush and restart if the translation cache overflowed. */              \
                                                                               \
     if(translation_ptr > translation_cache_limit)                             \
     {                                                                         \
@@ -3338,8 +3397,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
       return -1;                                                              \
     }                                                                         \
                                                                               \
-    /* If the next instruction is a block entry point update the              \
-       cycle counter and update */                                            \
+    /* If the next instruction is a block entry point, update cycles. */      \
     if(block_data[block_data_position].update_cycles == 1)                    \
     {                                                                         \
       generate_cycle_update();                                                \
@@ -3379,9 +3437,19 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
        branch_target;                                                         \
       external_block_exits[external_block_exit_position].branch_source =      \
        block_exits[i].branch_source;                                          \
+      if(!sh4_branch12_in_range(block_exits[i].branch_source,                 \
+       translation_ptr))                                                       \
+        return -1;                                                            \
+      generate_branch_patch_unconditional_direct(                             \
+       block_exits[i].branch_source, translation_ptr);                        \
+      SH4_EMIT_ABSOLUTE_JUMP_VENEER(0,                                        \
+       external_block_exits[external_block_exit_position].branch_literal);     \
       external_block_exit_position++;                                         \
     }                                                                         \
   }                                                                           \
+                                                                              \
+  if(translation_ptr > translation_cache_limit)                                \
+    return -1;                                                                \
                                                                               \
   switch(translation_region)                                                  \
   {                                                                           \
@@ -3399,15 +3467,15 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
           ewram_code_max = pc;                                                \
       }                                                                       \
                                                                               \
-      ram_translation_ptr = translation_ptr;                                  \
+      ram_translation_ptr = (u8 *)translation_ptr;                            \
       break;                                                                  \
                                                                               \
     case TRANSLATION_REGION_ROM:                                              \
-      rom_translation_ptr = translation_ptr;                                  \
+      rom_translation_ptr = (u8 *)translation_ptr;                            \
       break;                                                                  \
                                                                               \
     case TRANSLATION_REGION_BIOS:                                             \
-      bios_translation_ptr = translation_ptr;                                 \
+      bios_translation_ptr = (u8 *)translation_ptr;                           \
       break;                                                                  \
   }                                                                           \
                                                                               \
@@ -3417,8 +3485,7 @@ s32 translate_block_##type(u32 pc, translation_region_type                    \
     type##_link_block();                                                      \
     if(translation_target == NULL)                                            \
       return -1;                                                              \
-    generate_branch_patch_unconditional(                                      \
-     external_block_exits[i].branch_source, translation_target);              \
+    *external_block_exits[i].branch_literal = (u32)translation_target;         \
   }                                                                           \
                                                                               \
   return 0;                                                                   \

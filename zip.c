@@ -18,8 +18,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <zlib.h>
 #include "common.h"
+
+#ifdef GPSP_USE_MINIZ
+#define MINIZ_NO_STDIO
+#define MINIZ_NO_TIME
+#define MINIZ_NO_DEFLATE_APIS
+#define MINIZ_NO_ARCHIVE_APIS
+#include "third_party/miniz/miniz.c"
+#include "third_party/miniz/miniz_tinfl.c"
+#else
+#include <zlib.h>
+#endif
 
 #define ZIP_BUFFER_SIZE (128 * 1024)
 
@@ -46,6 +56,11 @@ struct SZIPFileHeader
 u32 load_file_zip(char *filename)
 {
   struct SZIPFileHeader data;
+#ifdef _arch_dreamcast
+  char open_path[512];
+#else
+  char *open_path = filename;
+#endif
   u8 tmp[1024];
   s32 retval = -1;
   u8 *buffer = NULL;
@@ -53,7 +68,11 @@ u32 load_file_zip(char *filename)
   u8 *ext;
   char *dot;
 
-  file_open(fd, filename, read);
+#ifdef _arch_dreamcast
+  snprintf(open_path, sizeof(open_path), "/cd/gbaDC/%s", filename);
+#endif
+
+  file_open(fd, open_path, read);
 
   if(!file_check_valid(fd))
     return -1;

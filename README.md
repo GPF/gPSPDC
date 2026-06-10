@@ -71,6 +71,7 @@ Requirements:
 
 - [KallistiOS](https://github.com/KallistiOS/KallistiOS) (KOS) with Dreamcast toolchain
 - KOS ports: **SDL**, **zlib**, **libpng**
+- Optional: pass `USE_MINIZ=1` to build ZIP inflate against vendored `miniz` instead of zlib for heap-use experiments
 - Optional: `mkdcdisc`, `scramble` (for `dc/dc.sh` CD image creation)
 
 ```sh
@@ -131,7 +132,7 @@ Commercial GBA titles can be up to 32 MB. gPSPDC loads them from GD-ROM under `/
 - **`game_config.txt`** — per-title options (idle-loop targets, flash size, stack tweaks). See comments in the bundled file.
 - **`<romname>.cfg`** — per-game frameskip and clock options, saved next to the ROM.
 
-See [HIGH_IMPACT_FIXES.md](HIGH_IMPACT_FIXES.md) for recent port work and the development roadmap. Before burning a disc, run the checks in [HARDWARE_SMOKE_TEST.md](HARDWARE_SMOKE_TEST.md). Third-party code attributions are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+See [HIGH_IMPACT_FIXES.md](HIGH_IMPACT_FIXES.md) for recent port work and the development roadmap. Before burning a disc, run the checks in [HARDWARE_SMOKE_TEST.md](HARDWARE_SMOKE_TEST.md). External MIT test packs and reference projects are tracked in [EXTERNAL_VALIDATION.md](EXTERNAL_VALIDATION.md). Third-party code attributions are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Cheats
 

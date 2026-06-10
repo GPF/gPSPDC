@@ -85,7 +85,8 @@ static void test_alu_encodings(void)
     0x245B, /* or r5,r4 */
     0x2459, /* and r5,r4 */
     0x245A, /* xor r5,r4 */
-    0x3450  /* cmp/eq r5,r4 */
+    0x3450, /* cmp/eq r5,r4 */
+    0x4D11  /* cmp/pz r13 */
   };
 
   reset_buffer();
@@ -95,6 +96,7 @@ static void test_alu_encodings(void)
   SH4_EMIT_AND(sh4_reg_r4, sh4_reg_r4, sh4_reg_r5);
   SH4_EMIT_XOR(sh4_reg_r4, sh4_reg_r4, sh4_reg_r5);
   SH4_EMIT_CMP_REG(sh4_reg_r4, sh4_reg_r5);
+  SH4_EMIT_CMP_PZ(sh4_reg_r13);
   expect_words("alu and compare encodings", expected,
    sizeof(expected) / sizeof(expected[0]));
 }
@@ -124,7 +126,7 @@ static void test_shift_and_call_encodings(void)
 
 static void test_branch_filler_polarity(void)
 {
-  translation_ptr_t patch;
+  u8 *patch;
   const u16 expected[] = {
     0x2448, 0x8900, 0x0009, /* true: skip when tested value is zero */
     0x2448, 0x8B00, 0x0009  /* false: skip when tested value is non-zero */
@@ -146,7 +148,9 @@ static void test_load_imm_encodings(void)
     0xE400, 0x4418, 0x4418, 0x4418, /* 0x00000080 */
     0x747F, 0x7401,
     0xE412, 0x4418, 0x7434,         /* 0x12345678 */
-    0x4418, 0x7456, 0x4418, 0x7478
+    0x4418, 0x7456, 0x4418, 0x7478,
+    0xE408, 0x4418, 0x4418,         /* 0x08000068 */
+    0x4418, 0x7468
   };
 
   reset_buffer();
@@ -154,8 +158,78 @@ static void test_load_imm_encodings(void)
   SH4_EMIT_LOAD_IMM(sh4_reg_r4, 0xFFFFFF80);
   SH4_EMIT_LOAD_IMM(sh4_reg_r4, 0x00000080);
   SH4_EMIT_LOAD_IMM(sh4_reg_r4, 0x12345678);
+  SH4_EMIT_LOAD_IMM(sh4_reg_r4, 0x08000068);
   expect_words("load immediate encodings", expected,
    sizeof(expected) / sizeof(expected[0]));
+}
+
+static void test_branch_patch_and_veneer(void)
+{
+  u8 *branch;
+  u8 *target;
+  u32 *literal;
+  u32 literal_value;
+  size_t emitted;
+  size_t literal_index;
+  size_t expected_count;
+  u16 expected_branch;
+
+  reset_buffer();
+  SH4_EMIT_BRA_FILLER(branch);
+  SH4_EMIT_NOP();
+  SH4_EMIT_NOP();
+  target = (u8 *)translation_ptr;
+  expected_branch = 0xA000 |
+   (sh4_relative_offset_words(branch, target) & 0x0FFF);
+
+  if(!sh4_branch12_in_range(branch, target))
+  {
+    printf("near branch range failed\n");
+    failures++;
+  }
+
+  generate_branch_patch_unconditional_direct(branch, target);
+  if(code_buffer[0] != expected_branch)
+  {
+    printf("branch patch failed: got %04x expected %04x\n",
+     code_buffer[0], expected_branch);
+    failures++;
+  }
+  else
+  {
+    printf("branch patch: ok\n");
+  }
+
+  if(sh4_branch12_in_range((u8 *)code_buffer, (u8 *)code_buffer + 0x4000))
+  {
+    printf("far branch range failed\n");
+    failures++;
+  }
+  else
+  {
+    printf("branch range limits: ok\n");
+  }
+
+  reset_buffer();
+  SH4_EMIT_ABSOLUTE_JUMP_VENEER(0x8C123456, literal);
+  emitted = (size_t)(translation_ptr - code_buffer);
+  literal_index = (size_t)((u16 *)literal - code_buffer);
+  expected_count = ((((uintptr_t)code_buffer + 6) & 3) != 0) ? 6 : 5;
+  memcpy(&literal_value, literal, sizeof(literal_value));
+
+  if(emitted != expected_count || literal_index != expected_count - 2 ||
+   code_buffer[0] != 0xD101 || code_buffer[1] != 0x412B ||
+   code_buffer[2] != 0x0009 || (expected_count == 6 &&
+   code_buffer[3] != 0x0009) || literal_value != 0x8C123456)
+  {
+    printf("absolute jump veneer failed: emitted=%zu literal_index=%zu "
+     "literal=%08x\n", emitted, literal_index, literal_value);
+    failures++;
+  }
+  else
+  {
+    printf("absolute jump veneer: ok\n");
+  }
 }
 
 static void test_icache_range_hook(void)
@@ -198,6 +272,7 @@ int main(void)
   test_shift_and_call_encodings();
   test_branch_filler_polarity();
   test_load_imm_encodings();
+  test_branch_patch_and_veneer();
   test_icache_range_hook();
 
   return failures == 0 ? 0 : 1;

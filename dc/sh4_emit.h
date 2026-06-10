@@ -39,8 +39,21 @@ typedef enum {
 #define SH4_EMIT_NOP() \
   SH4_EMIT_BYTE(0x0009)
 
+static inline s32 sh4_relative_offset_words(const void *source,
+ const void *target)
+{
+  return (s32)(((const u8 *)target - ((const u8 *)source + 4)) >> 1);
+}
+
+static inline u32 sh4_branch12_in_range(const void *source,
+ const void *target)
+{
+  s32 offset = sh4_relative_offset_words(source, target);
+  return (offset >= -2048) && (offset <= 2047);
+}
+
 #define SH4_RELATIVE_OFFSET(source, target) \
-  (((u32)(target) - ((u32)(source) + 4)) >> 1)
+  sh4_relative_offset_words((source), (target))
 
 #define SH4_EMIT_MOV(rd, rm) \
   SH4_EMIT_BYTE(0x6003 | ((rd & 0xF) << 8) | ((rm & 0xF) << 4))
@@ -191,21 +204,21 @@ typedef enum {
 
 #define SH4_EMIT_BRA_FILLER(writeback_location) \
   do { \
-    (writeback_location) = translation_ptr; \
+    (writeback_location) = (u8 *)translation_ptr; \
     SH4_EMIT_BYTE(0xA000); \
     SH4_EMIT_NOP(); \
   } while(0)
 
 #define SH4_EMIT_BT_FILLER(writeback_location) \
   do { \
-    (writeback_location) = translation_ptr; \
+    (writeback_location) = (u8 *)translation_ptr; \
     SH4_EMIT_BYTE(0x8900); \
     SH4_EMIT_NOP(); \
   } while(0)
 
 #define SH4_EMIT_BF_FILLER(writeback_location) \
   do { \
-    (writeback_location) = translation_ptr; \
+    (writeback_location) = (u8 *)translation_ptr; \
     SH4_EMIT_BYTE(0x8B00); \
     SH4_EMIT_NOP(); \
   } while(0)
@@ -215,6 +228,20 @@ typedef enum {
     u32 _u8 = (u32)(imm) & 0xFF; \
     SH4_EMIT_MOVI((rd), _u8); \
     if(_u8 & 0x80) SH4_EMIT_EXTU_B((rd), (rd)); \
+  } while(0)
+
+#define SH4_EMIT_MOVL_PC(rd, disp) \
+  SH4_EMIT_BYTE(0xD000 | (((rd) & 0xF) << 8) | ((disp) & 0xFF))
+
+#define SH4_EMIT_ABSOLUTE_JUMP_VENEER(target, literal_location) \
+  do { \
+    u32 _veneer_start = (u32)translation_ptr; \
+    SH4_EMIT_MOVL_PC(sh4_reg_r1, 1); \
+    SH4_EMIT_JMP(sh4_reg_r1); \
+    if(((_veneer_start + 6) & 3) != 0) SH4_EMIT_NOP(); \
+    (literal_location) = (u32 *)translation_ptr; \
+    *((u32 *)translation_ptr) = (u32)(target); \
+    translation_ptr += 2; \
   } while(0)
 
 #define SH4_EMIT_ADD_UNSIGNED_BYTE(rd, imm) \
@@ -262,6 +289,9 @@ typedef enum {
 #define SH4_EMIT_CMP_REG(rn, rm) \
   SH4_EMIT_BYTE(0x3000 | (((rn) & 0xF) << 8) | (((rm) & 0xF) << 4))
 
+#define SH4_EMIT_CMP_PZ(rn) \
+  SH4_EMIT_BYTE(0x4011 | (((rn) & 0xF) << 8))
+
 typedef enum {
   CONDITION_TRUE,
   CONDITION_FALSE,
@@ -280,6 +310,8 @@ void sh4_indirect_branch_thumb(u32 address);
 void sh4_indirect_branch_dual(u32 address);
 void sh4_step_debug(u32 pc);
 void sh4_cheat_hook(void);
+void sh4_trace_swi(u32 swi_number, u32 pc, u32 thumb);
+void sh4_trace_emit_update_pc(u32 new_pc, u32 source_pc, u32 opcode);
 u32 function_cc execute_arm_translate(u32 cycles);
 
 #define arm_process_cheats() \
@@ -394,14 +426,20 @@ u32 function_cc execute_arm_translate(u32 cycles);
   *((u16 *)(dest)) = ((*((u16 *)(dest)) & 0xFF00) | \
    (SH4_RELATIVE_OFFSET((dest), (offset)) & 0xFF))
 
-#define generate_branch_patch_unconditional(dest, offset) \
+#define generate_branch_patch_unconditional_direct(dest, offset) \
   do { \
     u16 _rel = SH4_RELATIVE_OFFSET((dest), (offset)) & 0x0FFF; \
     *((u16 *)(dest)) = (0xA000 | _rel); \
   } while(0)
 
+#define generate_branch_patch_unconditional(dest, offset) \
+  generate_branch_patch_unconditional_direct((dest), (offset))
+
 #define generate_update_pc(new_pc) \
-  SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc)
+  do { \
+    sh4_trace_emit_update_pc((new_pc), pc, opcode); \
+    SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc); \
+  } while(0)
 
 #define SH4_EMIT_RELOAD_CYCLES() \
   SH4_EMIT_MOV(REG_CYCLES, sh4_reg_r0)
@@ -449,7 +487,7 @@ u32 function_cc execute_arm_translate(u32 cycles);
       SH4_EMIT_RELOAD_CYCLES(); \
       SH4_EMIT_BRA_FILLER(writeback_location); \
     } else { \
-      SH4_EMIT_TST_REG(REG_CYCLES); \
+      SH4_EMIT_CMP_PZ(REG_CYCLES); \
       SH4_EMIT_BT_FILLER(_skip_update); \
       SH4_EMIT_LOAD_IMM(sh4_reg_r4, new_pc); \
       SH4_EMIT_FUNCTION_CALL(sh4_update_gba); \

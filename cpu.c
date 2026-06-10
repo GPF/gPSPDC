@@ -4254,6 +4254,11 @@ u32 execute_arm(u32 cycles)
   if(pc_address_block == NULL)
     pc_address_block = load_gamepak_page(pc_region & 0x3FF);
 
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  printf("[gbaDC trace] execute interpreter enter pc=%08x cycles=%u cpsr=%08x\n",
+   pc, cycles, reg[REG_CPSR]);
+#endif
+
   while(1)
   {
     cycles_remaining = cycles;

@@ -695,7 +695,7 @@
   /* printf("sbit on %s %s %s %s\n", #access_type, #pre_op, #post_op, #wb)*/   \
 
 #define arm_block_memory_branch_pc_load()                                     \
-  if(reg_list & 0x8000)                                                       \
+  if(opcode & 0x8000)                                                         \
   {                                                                           \
     generate_mov(a0, rv);                                                     \
     generate_indirect_branch_arm();                                           \
@@ -703,7 +703,7 @@
 
 #define arm_block_memory_branch_pc_store()                                    \
 
-#define arm_block_memory(access_type, pre_op, post_op, wb, s_bit)             \
+#define arm_block_memory(access_type, pre_op, post_op, s_bit)                 \
 {                                                                             \
   generate_load_imm(a0, opcode);                                              \
   generate_load_pc(a1, pc);                                                   \
@@ -977,7 +977,7 @@
   {                                                                           \
     if((reg_list >> i) & 0x01)                                                \
     {                                                                         \
-      generate_add_reg_reg_imm(a0, s0, offset)                                \
+      generate_add_reg_reg_imm(a0, s0, offset);                               \
       if(reg_list & ~((2 << i) - 1))                                          \
       {                                                                       \
         thumb_block_memory_##access_type();                                   \
@@ -1085,6 +1085,10 @@ data_proc_generate_add_test_function(cmn, rn, rm);
 
 #define arm_swi()                                                             \
   generate_swi_hle_handler((opcode >> 16) & 0xFF);                            \
+  generate_load_imm(a0, ((opcode >> 16) & 0xFF));                             \
+  generate_load_imm(a1, (pc + 4));                                            \
+  generate_load_imm(a2, 0);                                                   \
+  generate_function_call(sh4_trace_swi);                                      \
   generate_update_pc((pc + 4));                                               \
   generate_function_call(execute_swi);                                        \
   generate_branch()                                                           \
@@ -1123,6 +1127,10 @@ data_proc_generate_add_test_function(cmn, rn, rm);
 
 #define thumb_swi()                                                           \
   generate_swi_hle_handler(opcode & 0xFF);                                    \
+  generate_load_imm(a0, (opcode & 0xFF));                                     \
+  generate_load_imm(a1, (pc + 2));                                            \
+  generate_load_imm(a2, 1);                                                   \
+  generate_function_call(sh4_trace_swi);                                      \
   generate_update_pc((pc + 2));                                               \
   generate_function_call(execute_swi);                                        \
   generate_branch_cycle_update(                                               \

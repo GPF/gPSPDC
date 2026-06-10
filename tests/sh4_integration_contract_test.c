@@ -105,7 +105,7 @@ static void test_sh4_stub_async_exit_contract(void)
 
   expect_contains("cycle reload helper", text,
    "static inline void sh4_reload_cycles(u32 cycles)");
-  expect_contains("cycle reload register", text, "mov.l %0, r13");
+  expect_contains("cycle reload register", text, "mov %0, r13");
   expect_count("cycle reload call sites", text, "sh4_reload_cycles(cycles);",
    4);
   expect_count("update_gba cycle capture", text, "cycles = update_gba();",
@@ -114,10 +114,31 @@ static void test_sh4_stub_async_exit_contract(void)
    "result = update_gba();", 0);
   expect_count("shared pc lookup helper", text, "static void sh4_lookup_pc(void)",
    1);
+  expect_contains("dynarec entry jump delay slot", text,
+   "\"jmp @%[tgt]\\n\\t\"\n    \"nop\\n\\t\"");
 
   free(text);
   if(failures == failures_before)
     printf("SH-4 async exit contract: ok\n");
+}
+
+static void test_sh4_translation_pointer_contract(void)
+{
+  char *text = read_text_file("../cpu_threaded.c");
+  int failures_before = failures;
+
+  if(text == NULL)
+    return;
+
+  expect_contains("SH-4 translation pointer width", text,
+   "translation_ptr_t translation_ptr");
+  expect_count("old byte translation pointer", text, "u8 *translation_ptr;", 0);
+  expect_contains("SH-4 block offset cast", text,
+   "block_offset = (u8 *)translation_ptr");
+
+  free(text);
+  if(failures == failures_before)
+    printf("SH-4 translation pointer contract: ok\n");
 }
 
 static void test_sh4_helpers_irq_contract(void)
@@ -242,6 +263,7 @@ static void test_translation_cache_invalidation_contract(void)
 int main(void)
 {
   test_sh4_stub_async_exit_contract();
+  test_sh4_translation_pointer_contract();
   test_sh4_helpers_irq_contract();
   test_sh4_psr_store_contract();
   test_skyemu_cheat_contract();

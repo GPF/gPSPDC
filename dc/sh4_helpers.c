@@ -10,10 +10,6 @@ extern u8 *memory_map_read[];
 extern u8 *memory_map_write[];
 extern const u8 bit_count[256];
 
-extern u32 read_memory8(u32 address);
-extern u32 read_memory16(u32 address);
-extern u32 read_memory32(u32 address);
-extern s32 read_memory16_signed(u32 address);
 extern cpu_alert_type write_memory8(u32 address, u8 value);
 extern cpu_alert_type write_memory16(u32 address, u16 value);
 extern cpu_alert_type write_memory32(u32 address, u32 value);
@@ -68,6 +64,7 @@ u32 function_cc execute_orrs(u32 rm, u32 rn) { u32 dest = rn | rm; calculate_z_f
 u32 function_cc execute_bic(u32 rm, u32 rn) { return rn & (~rm); }
 u32 function_cc execute_bics(u32 rm, u32 rn) { u32 dest = rn & (~rm); calculate_z_flag(dest); calculate_n_flag(dest); return dest; }
 u32 function_cc execute_mul(u32 rm, u32 rn) { return rn * rm; }
+u32 function_cc execute_muls(u32 rm, u32 rn) { u32 dest = rn * rm; calculate_z_flag(dest); calculate_n_flag(dest); return dest; }
 u32 function_cc execute_mov(u32 rm) { return rm; }
 u32 function_cc execute_movs(u32 rm) { u32 dest = rm; calculate_z_flag(dest); calculate_n_flag(dest); return dest; }
 u32 function_cc execute_mvn(u32 rm) { return ~rm; }
@@ -266,9 +263,7 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 }
 u32 function_cc execute_load_s16(u32 address)
 {
-  u32 dest;
-  read_memory_s16(address, dest);
-  return dest;
+  return (s16)read_memory16_signed(address);
 }
 u32 function_cc execute_aligned_load32(u32 address)
 {
@@ -492,15 +487,15 @@ u32 function_cc execute_load_u32(u32 address)
 u32 function_cc execute_mul_regs(u32 rm, u32 rs)
 {
   u32 result = rm * rs;
-  __asm__ __volatile__("mov.l %0,r4" : : "r" (result) : "r4");
+  __asm__ __volatile__("mov %0,r4" : : "r" (result) : "r4");
   return result;
 }
 
 static void sh4_set_mul_result(u32 lo, u32 hi)
 {
   __asm__ __volatile__(
-    "mov.l %0,r4\n\t"
-    "mov.l %1,r5"
+    "mov %0,r4\n\t"
+    "mov %1,r5"
     : : "r" (lo), "r" (hi) : "r4", "r5"
   );
 }

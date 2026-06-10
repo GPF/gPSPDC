@@ -89,8 +89,11 @@ static void test_memory_contract(void)
   char *cpu_h = read_text_file("../cpu.h");
 
   expect_contains("32KB page size", memory_c, "GAMEPAK_SWAP_PAGE_SIZE");
-  expect_contains("dc buffer tiers", memory_c, "16 * 1024 * 1024");
-  expect_contains("dc buffer fallback", memory_c, "4 * 1024 * 1024");
+  expect_contains("dc conservative buffer", memory_c, "4 * 1024 * 1024");
+  expect_contains("dc explicit rom path", memory_c,
+   "snprintf(open_path, sizeof(open_path), \"/cd/gbaDC/%s\", name)");
+  expect_contains("dc file length path", memory_c,
+   "file_length(open_path, gamepak_file)");
   expect_contains("rom buffer null guard", memory_c, "if(gamepak_rom == NULL)");
   expect_contains("memory map null guard", memory_c,
    "if(gamepak_memory_map == NULL)");

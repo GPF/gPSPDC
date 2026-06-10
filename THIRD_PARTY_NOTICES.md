@@ -37,3 +37,10 @@ SOFTWARE.
 - **Project:** [mGBA](https://github.com/mgba-emu/mgba) by Jeffrey Pfau et al.
 - **License:** [Mozilla Public License 2.0](https://github.com/mgba-emu/mgba/blob/master/LICENSE)
 - **Used in:** `cheats.c` — Gameshark / PAR v3 `DEADFACE` re-encryption reseed tables and `GBACheatReseedGameShark` algorithm (adapted for gpSP cheat file loading)
+
+## miniz
+
+- **Project:** [miniz](https://github.com/richgel999/miniz) by Rich Geldreich, Tenacious Software LLC, RAD Game Tools, and Valve Software
+- **License:** [MIT License](https://github.com/richgel999/miniz/blob/master/LICENSE)
+- **Vendored from:** commit `2ea4e81`
+- **Used in:** `third_party/miniz/` and optionally compiled into `zip.c` when building with `USE_MINIZ=1`, as an alternate raw-deflate backend for ZIP ROM loading experiments

@@ -3275,6 +3275,16 @@ void flip_screen()
 
 void flip_screen()
 {
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  static u32 trace_flip_screen;
+
+  trace_flip_screen++;
+  if((trace_flip_screen & 63) == 1)
+    printf("[gbaDC trace] flip_screen #%u screen=%p w=%d h=%d pitch=%d\n",
+     trace_flip_screen, screen, screen ? screen->w : 0, screen ? screen->h : 0,
+     screen ? screen->pitch : 0);
+#endif
+
   // if((video_scale != 1) && (current_scale != unscaled))
   // {
   //   s32 x, y;
@@ -3314,6 +3324,45 @@ void flip_screen()
   // }
   SDL_Flip(screen);
 }
+
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+void gpsp_dc_debug_video_test_pattern(void)
+{
+  u32 pitch = get_screen_pitch();
+  u16 *dest = get_screen_pixels();
+  u32 x, y;
+
+  printf("[gbaDC trace] video test pattern begin screen=%p w=%d h=%d pitch=%d\n",
+   screen, screen ? screen->w : 0, screen ? screen->h : 0,
+   screen ? screen->pitch : 0);
+
+  if(screen == NULL || dest == NULL)
+  {
+    printf("[gbaDC trace] video test pattern skipped: null screen/buffer\n");
+    return;
+  }
+
+  clear_screen(0x0000);
+
+  for(y = 0; y < 160; y++)
+  {
+    u16 *line = dest + (y * pitch);
+
+    for(x = 0; x < 240; x++)
+    {
+      if(x < 80)
+        line[x] = 0x001F;
+      else if(x < 160)
+        line[x] = 0x03E0;
+      else
+        line[x] = 0x7C00;
+    }
+  }
+
+  flip_screen();
+  printf("[gbaDC trace] video test pattern flipped\n");
+}
+#endif
 
 #endif
 
@@ -3573,8 +3622,10 @@ void video_resolution_large()
     current_scale = unscaled;
 #ifdef _arch_dreamcast
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
-#endif
+    screen = SDL_SetVideoMode(640, 480, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
+#else
     screen = SDL_SetVideoMode(512, 512, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
+#endif
     resolution_width = 480;
     resolution_height = 272;
 #ifdef _arch_dreamcast

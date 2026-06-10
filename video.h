@@ -36,6 +36,9 @@ void clear_screen_region(u32 x, u32 y, u32 w, u32 h, u16 color);
 void blit_to_screen(u16 *src, u32 w, u32 h, u32 x, u32 y);
 u16 *copy_screen();
 void flip_screen();
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+void gpsp_dc_debug_video_test_pattern(void);
+#endif
 void video_write_mem_savestate(file_tag_type savestate_file);
 void video_read_savestate(file_tag_type savestate_file);
 
