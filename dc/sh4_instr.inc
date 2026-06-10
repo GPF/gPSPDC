@@ -697,8 +697,8 @@
 #define arm_block_memory_branch_pc_load()                                     \
   if(opcode & 0x8000)                                                         \
   {                                                                           \
-    generate_mov(a0, rv);                                                     \
-    generate_indirect_branch_arm();                                           \
+    generate_load_reg(a0, REG_PC);                                            \
+    generate_indirect_branch_dual();                                          \
   }                                                                           \
 
 #define arm_block_memory_branch_pc_store()                                    \

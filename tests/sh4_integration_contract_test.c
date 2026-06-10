@@ -150,6 +150,8 @@ static void test_sh4_helpers_irq_contract(void)
     return;
 
   expect_contains("irq helper", text, "static u32 sh4_take_pending_irq(u32 return_pc)");
+  expect_contains("irq bios read protect", text, "bios_read_protect = 0xe55ec002");
+  expect_contains("irq halt wake", text, "reg[CPU_HALT_STATE] = CPU_ACTIVE");
   expect_contains("store cpsr return type", text,
    "u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc)");
   expect_contains("spsr restore irq redirect", text,

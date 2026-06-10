@@ -94,6 +94,10 @@ static void test_dynarec_ldm_stm_contract(void)
    "generate_function_call(execute_arm_block_memory)");
   expect_contains("dynarec ldm pc branch", sh4_instr,
    "arm_block_memory_branch_pc_load");
+  expect_contains("dynarec ldm pc load from reg", sh4_instr,
+   "generate_load_reg(a0, REG_PC)");
+  expect_contains("dynarec ldm pc dual branch", sh4_instr,
+   "generate_indirect_branch_dual()");
 
   if(sh4_helpers != NULL)
     free(sh4_helpers);
