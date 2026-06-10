@@ -151,6 +151,13 @@ static void test_dreamcast_ci_contract(void)
   expect_contains("dreamcast build script", build_script,
    "einsteinx2/dcdev-kos-toolchain:gcc-9__v2.0.0");
   expect_contains("dreamcast build script workdir", build_script, "-w /src/dc");
+  /* Plain `make` builds the KOS `subdirs` goal and produces no ELF; the
+     script must default to the real `all` target so CI truly cross-compiles. */
+  expect_contains("dreamcast build script real target", build_script,
+   "set -- all");
+  /* The ELF must be rebuilt, not validated against a committed binary. */
+  expect_contains("dreamcast CI removes stale elf", workflow,
+   "rm -f dc/gdC.elf");
 
   if(workflow != NULL)
     free(workflow);

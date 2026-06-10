@@ -12,4 +12,11 @@ fi
 
 docker pull "$IMAGE" >/dev/null 2>&1 || true
 
+# Default to the real ELF target. Plain `make` resolves to the KOS `subdirs`
+# goal from Makefile.rules ("Nothing to be done for 'subdirs'") and builds
+# nothing, so an explicit target is required for CI to actually cross-compile.
+if [ "$#" -eq 0 ]; then
+  set -- all
+fi
+
 exec docker run --rm -v "$ROOT:/src" -w /src/dc "$IMAGE" make "$@"
