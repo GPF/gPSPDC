@@ -520,11 +520,16 @@
 #define arm_psr_load_new_imm()                                                \
   generate_load_imm(a0, imm)                                                  \
 
+/* execute_store_cpsr returns the IRQ vector (non-zero) when the new CPSR    \
+   unmasks a pending IRQ, else 0.  Dispatch to the vector only when r0 != 0;  \
+   skip past the dispatch when r0 == 0 (T == 1 after tst), i.e. COND_SKIP_T.  \
+   The old BF skipped when r0 != 0, branching to a null block on every other  \
+   CPSR store. */                                                             \
 #define arm_psr_store_cpsr_post()                                             \
   do {                                                                        \
     u8 *_skip_irq;                                                            \
     SH4_EMIT_TST_REG(sh4_reg_r0);                                             \
-    SH4_EMIT_BF_FILLER(_skip_irq);                                            \
+    SH4_EMIT_COND_SKIP_T(_skip_irq);                                          \
     SH4_EMIT_MOV(sh4_reg_r4, sh4_reg_r0);                                     \
     generate_indirect_branch_arm();                                           \
     generate_branch_patch_conditional(_skip_irq, translation_ptr);            \

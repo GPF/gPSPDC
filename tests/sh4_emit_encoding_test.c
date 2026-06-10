@@ -127,9 +127,12 @@ static void test_shift_and_call_encodings(void)
 static void test_branch_filler_polarity(void)
 {
   u8 *patch;
+  /* Each conditional skip is now tst/cmp + short bt/bf hop + 12-bit bra + nop.
+     true:  skip (bra) when T==1 -> hop is bf .+6 (0x8B01)
+     false: skip (bra) when T==0 -> hop is bt .+6 (0x8901) */
   const u16 expected[] = {
-    0x2448, 0x8900, 0x0009, /* true: skip when tested value is zero */
-    0x2448, 0x8B00, 0x0009  /* false: skip when tested value is non-zero */
+    0x2448, 0x8B01, 0xA000, 0x0009, /* true  */
+    0x2448, 0x8901, 0xA000, 0x0009  /* false */
   };
 
   reset_buffer();
@@ -138,6 +141,53 @@ static void test_branch_filler_polarity(void)
   (void)patch;
   expect_words("boolean branch filler polarity", expected,
    sizeof(expected) / sizeof(expected[0]));
+}
+
+static void test_conditional_skip_patch(void)
+{
+  u8 *skip;
+  u8 *near_target;
+  u16 expected_bra;
+
+  /* The writeback location points at the bra; patching reaches far targets a
+     lone bt/bf (+/-254 bytes) could not. */
+  reset_buffer();
+  generate_branch_filler_true(a0, a1, skip);
+  near_target = (u8 *)translation_ptr;
+  expected_bra = 0xA000 |
+   (sh4_relative_offset_words(skip, near_target) & 0x0FFF);
+
+  generate_branch_patch_conditional(skip, near_target);
+  if(*((u16 *)skip) != expected_bra)
+  {
+    printf("conditional skip near patch failed: got %04x expected %04x\n",
+     *((u16 *)skip), expected_bra);
+    failures++;
+  }
+  else
+  {
+    printf("conditional skip near patch: ok\n");
+  }
+
+  /* A far skip (beyond the old 8-bit reach) still encodes a valid bra. */
+  reset_buffer();
+  generate_branch_filler_equal(a0, a1, skip);
+  {
+    u8 *far_target = skip + 2000; /* ~1000 words, far past 8-bit bt/bf range */
+    s32 off = sh4_relative_offset_words(skip, far_target);
+    expected_bra = 0xA000 | (off & 0x0FFF);
+    generate_branch_patch_conditional(skip, far_target);
+    if(*((u16 *)skip) != expected_bra || off < -2048 || off > 2047)
+    {
+      printf("conditional skip far patch failed: got %04x expected %04x "
+       "off=%d\n", *((u16 *)skip), expected_bra, off);
+      failures++;
+    }
+    else
+    {
+      printf("conditional skip far patch: ok\n");
+    }
+  }
 }
 
 static void test_load_imm_encodings(void)
@@ -325,6 +375,7 @@ int main(void)
   test_alu_encodings();
   test_shift_and_call_encodings();
   test_branch_filler_polarity();
+  test_conditional_skip_patch();
   test_load_imm_encodings();
   test_branch_patch_and_veneer();
   test_long_branch_filler_patch();

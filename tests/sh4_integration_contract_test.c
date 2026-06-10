@@ -184,6 +184,10 @@ static void test_sh4_psr_store_contract(void)
   expect_contains("cpsr store pc arg", text, "generate_load_pc(a2, pc);");
   expect_contains("cpsr irq indirect branch", text,
    "generate_indirect_branch_arm();");
+  expect_contains("cpsr irq skip when no irq", text,
+   "SH4_EMIT_COND_SKIP_T(_skip_irq);");
+  expect_count("cpsr irq inverted skip removed", text,
+   "SH4_EMIT_BF_FILLER(_skip_irq)", 0);
   expect_count("duplicate arm_psr_store_finish macro", text,
    "#define arm_psr_store_finish(", 0);
   expect_contains("dynarec block memory helper call", text,
