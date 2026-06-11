@@ -102,6 +102,14 @@ static u32 sh4_dispatch_stack;
 static void __attribute__((noreturn, noinline))
  sh4_dispatch_block(u8 *target, u32 cycles)
 {
+  /* Pin the operands to caller-saved low registers: the asm overwrites
+     r12/r13/r15, so the register allocator must never hand an input one of
+     those registers (it has no way to know they die mid-template). */
+  register u8 *dispatch_target asm("r0") = target;
+  register u32 dispatch_stack asm("r1") = sh4_dispatch_stack;
+  register u32 *dispatch_base asm("r2") = reg;
+  register u32 dispatch_cycles asm("r3") = cycles;
+
   __asm__ __volatile__(
     "mov %[stk], r15\n\t"
     "mov %[regptr], r12\n\t"
@@ -109,8 +117,8 @@ static void __attribute__((noreturn, noinline))
     "jmp @%[tgt]\n\t"
     "nop\n\t"
     :
-    : [tgt] "r" (target), [regptr] "r" (reg), [cyc] "r" (cycles),
-      [stk] "r" (sh4_dispatch_stack)
+    : [tgt] "r" (dispatch_target), [regptr] "r" (dispatch_base),
+      [cyc] "r" (dispatch_cycles), [stk] "r" (dispatch_stack)
     : "memory"
   );
   __builtin_unreachable();
@@ -202,18 +210,31 @@ void function_cc execute_store_u8(u32 address, u32 value, u32 pc, u32 cycles)
   }
 
   {
-    cpu_alert_type result = write_memory8(address, (u8)value);
+    cpu_alert_type result;
+
+    /* Collapse before the write: an IO write can complete a DMA whose
+       raise_interrupt() snapshots reg[REG_CPSR] into SPSR_irq, and the IRQ
+       handler's return restores flags from that snapshot. */
+    collapse_flags();
+    result = write_memory8(address, (u8)value);
 
     if(result != CPU_ALERT_NONE)
     {
-      collapse_flags();
-
       if(result == CPU_ALERT_SMC)
       {
         flush_translation_cache_ram();
         sh4_lookup_pc(cycles);
       }
 
+      if(result == CPU_ALERT_IRQ)
+      {
+        /* raise_interrupt() already redirected the PC; running update_gba()
+           here would bill the rest of the current video/timer period before
+           it elapsed (MIPS stub parity: irq_alert). */
+        sh4_lookup_pc(cycles);
+      }
+
+      /* CPU_ALERT_HALT: sleep until an event wakes the CPU. */
       do
       {
         cycles = update_gba();
@@ -253,17 +274,22 @@ void function_cc execute_store_u16(u32 address, u32 value, u32 pc, u32 cycles)
   }
 
   {
-    cpu_alert_type result = write_memory16(address, (u16)value);
+    cpu_alert_type result;
+
+    /* See execute_store_u8 for the collapse/IRQ-dispatch rationale. */
+    collapse_flags();
+    result = write_memory16(address, (u16)value);
 
     if(result != CPU_ALERT_NONE)
     {
-      collapse_flags();
-
       if(result == CPU_ALERT_SMC)
       {
         flush_translation_cache_ram();
         sh4_lookup_pc(cycles);
       }
+
+      if(result == CPU_ALERT_IRQ)
+        sh4_lookup_pc(cycles);
 
       do
       {
@@ -304,17 +330,22 @@ void function_cc execute_store_u32(u32 address, u32 value, u32 pc, u32 cycles)
   }
 
   {
-    cpu_alert_type result = write_memory32(address, value);
+    cpu_alert_type result;
+
+    /* See execute_store_u8 for the collapse/IRQ-dispatch rationale. */
+    collapse_flags();
+    result = write_memory32(address, value);
 
     if(result != CPU_ALERT_NONE)
     {
-      collapse_flags();
-
       if(result == CPU_ALERT_SMC)
       {
         flush_translation_cache_ram();
         sh4_lookup_pc(cycles);
       }
+
+      if(result == CPU_ALERT_IRQ)
+        sh4_lookup_pc(cycles);
 
       do
       {

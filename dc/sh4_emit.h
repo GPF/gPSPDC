@@ -254,6 +254,35 @@ static inline u32 *sh4_long_branch_literal(void *slot)
     SH4_EMIT_NOP(); \
   } while(0)
 
+/* Fills in the 8-bit displacement of a bt/bf emitted by a *_FILLER macro. */
+static inline void sh4_patch_cond_hop(void *hop, const void *target)
+{
+  u16 *hop_word = (u16 *)hop;
+
+  *hop_word = (u16)((*hop_word & 0xFF00) |
+   (sh4_relative_offset_words(hop, target) & 0xFF));
+}
+
+/* Far-capable conditional skips for spans that may exceed the 12-bit bra:
+   hop over an absolute-jump slot with the opposite-polarity bt/bf, so the
+   skip itself has unlimited reach.  The writeback location points at the
+   veneer, which generate_branch_patch_conditional recognizes by shape. */
+#define SH4_EMIT_COND_SKIP_T_FAR(writeback_location) \
+  do { \
+    u8 *_cond_hop; \
+    SH4_EMIT_BF_FILLER(_cond_hop); /* T==0: hop past the veneer */ \
+    SH4_EMIT_LONG_BRANCH_FILLER(writeback_location); \
+    sh4_patch_cond_hop(_cond_hop, translation_ptr); \
+  } while(0)
+
+#define SH4_EMIT_COND_SKIP_F_FAR(writeback_location) \
+  do { \
+    u8 *_cond_hop; \
+    SH4_EMIT_BT_FILLER(_cond_hop); /* T==1: hop past the veneer */ \
+    SH4_EMIT_LONG_BRANCH_FILLER(writeback_location); \
+    sh4_patch_cond_hop(_cond_hop, translation_ptr); \
+  } while(0)
+
 #define SH4_EMIT_BF_FILLER(writeback_location) \
   do { \
     (writeback_location) = (u8 *)translation_ptr; \
@@ -487,18 +516,33 @@ u32 function_cc execute_arm_translate(u32 cycles);
 
 #define generate_cycle_update() \
   do { \
-    SH4_EMIT_LOAD_IMM(sh4_reg_r1, cycle_count); \
-    SH4_EMIT_SUB(REG_CYCLES, REG_CYCLES, sh4_reg_r1); \
-    cycle_count = 0; \
+    if(cycle_count != 0) { \
+      SH4_EMIT_LOAD_IMM(sh4_reg_r1, cycle_count); \
+      SH4_EMIT_SUB(REG_CYCLES, REG_CYCLES, sh4_reg_r1); \
+      cycle_count = 0; \
+    } \
   } while(0)
 
 #define generate_cycle_update_force() generate_cycle_update()
 
-/* Conditional skips now reserve a 12-bit bra (SH4_EMIT_COND_SKIP_*) whose
-   writeback location points at the bra word, so patching is identical to an
-   unconditional bra patch. */
+void gpsp_dynarec_fatal_error(const char *detail);
+
+/* Conditional skips reserve either a 12-bit bra (SH4_EMIT_COND_SKIP_*) or,
+   for long conditional runs, a bt/bf hop over an absolute-jump slot
+   (SH4_EMIT_COND_SKIP_*_FAR).  Dispatch on the slot's first word: a bra
+   filler starts 0xAxxx, a veneer starts with mov.l @(disp,pc) (0xDxxx).
+   A bra slot that cannot reach its target means the translate-time run
+   estimate was wrong; fail loudly instead of emitting a corrupt branch. */
 #define generate_branch_patch_conditional(dest, offset) \
-  generate_branch_patch_unconditional_direct((dest), (offset))
+  do { \
+    if((*((u16 *)(dest)) & 0xF000) == 0xA000) { \
+      if(!sh4_branch12_in_range((dest), (offset))) \
+        gpsp_dynarec_fatal_error("conditional skip exceeds bra range"); \
+      generate_branch_patch_unconditional_direct((dest), (offset)); \
+    } else { \
+      generate_branch_patch_unconditional((dest), (offset)); \
+    } \
+  } while(0)
 
 #define generate_branch_patch_unconditional_direct(dest, offset) \
   do { \
@@ -562,6 +606,35 @@ u32 function_cc execute_arm_translate(u32 cycles);
 #define generate_conditional_branch(ireg_a, ireg_b, type, writeback_location) \
   generate_branch_filler_##type(ireg_a, ireg_b, writeback_location)
 
+/* Far variants for conditional runs whose emitted body may exceed the
+   12-bit bra reach (see arm_conditional_block_header). */
+#define generate_branch_filler_true_far(ireg_dest, ireg_src, writeback_location) \
+  do { \
+    SH4_EMIT_TST_REG(SH4_IREG(ireg_dest)); \
+    SH4_EMIT_COND_SKIP_T_FAR(writeback_location); \
+  } while(0)
+
+#define generate_branch_filler_false_far(ireg_dest, ireg_src, writeback_location) \
+  do { \
+    SH4_EMIT_TST_REG(SH4_IREG(ireg_dest)); \
+    SH4_EMIT_COND_SKIP_F_FAR(writeback_location); \
+  } while(0)
+
+#define generate_branch_filler_equal_far(ireg_dest, ireg_src, writeback_location) \
+  do { \
+    SH4_EMIT_CMP_REG(SH4_IREG(ireg_dest), SH4_IREG(ireg_src)); \
+    SH4_EMIT_COND_SKIP_F_FAR(writeback_location); \
+  } while(0)
+
+#define generate_branch_filler_not_equal_far(ireg_dest, ireg_src, writeback_location) \
+  do { \
+    SH4_EMIT_CMP_REG(SH4_IREG(ireg_dest), SH4_IREG(ireg_src)); \
+    SH4_EMIT_COND_SKIP_T_FAR(writeback_location); \
+  } while(0)
+
+#define generate_conditional_branch_far(ireg_a, ireg_b, type, writeback_location) \
+  generate_branch_filler_##type##_far(ireg_a, ireg_b, writeback_location)
+
 #define generate_branch_no_cycle_update(writeback_location, new_pc) \
   do { \
     u8 *_skip_update; \
@@ -586,12 +659,6 @@ u32 function_cc execute_arm_translate(u32 cycles);
     generate_cycle_update(); \
     generate_branch_no_cycle_update(writeback_location, new_pc); \
   } while(0)
-
-#define generate_branch() \
-  generate_branch_cycle_update( \
-   block_exits[block_exit_position].branch_source, \
-   block_exits[block_exit_position].branch_target); \
-  block_exit_position++
 
 /* The live SH-4 cycle counter (r13) is passed explicitly so the dispatch
    stub can re-enter the next block through the stack-resetting trampoline
@@ -629,138 +696,11 @@ u32 function_cc execute_arm_translate(u32 cycles);
      (u32)((u8 *)(cache_end) - (u8 *)(cache_start)) + 0x100); \
   } while(0)
 
-#define generate_load_reg_pc(ireg, reg_index, pc_offset) \
-  if(reg_index == 15) \
-    generate_load_pc(ireg, pc + pc_offset); \
-  else \
-    generate_load_reg(ireg, reg_index)
-
-#define generate_store_reg_pc_no_flags(ireg, reg_index) \
-  do { \
-    generate_store_reg(ireg, reg_index); \
-    if(reg_index == 15) { \
-      SH4_EMIT_MOV(sh4_reg_r4, SH4_IREG(ireg)); \
-      generate_indirect_branch_arm(); \
-    } \
-  } while(0)
-
-#define generate_store_reg_pc_flags(ireg, reg_index) \
-  do { \
-    generate_store_reg(ireg, reg_index); \
-    if(reg_index == 15) { \
-      SH4_EMIT_MOV(sh4_reg_r4, SH4_IREG(ireg)); \
-      SH4_EMIT_FUNCTION_CALL(execute_spsr_restore); \
-      SH4_EMIT_MOV(sh4_reg_r4, sh4_reg_r0); \
-      generate_indirect_branch_dual(); \
-    } \
-  } while(0)
-
-#define generate_condition_eq(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_Z_FLAG); condition_check = CONDITION_TRUE
-
-#define generate_condition_ne(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_Z_FLAG); condition_check = CONDITION_FALSE
-
-#define generate_condition_cs(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_C_FLAG); condition_check = CONDITION_TRUE
-
-#define generate_condition_cc(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_C_FLAG); condition_check = CONDITION_FALSE
-
-#define generate_condition_mi(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_N_FLAG); condition_check = CONDITION_TRUE
-
-#define generate_condition_pl(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_N_FLAG); condition_check = CONDITION_FALSE
-
-#define generate_condition_vs(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_V_FLAG); condition_check = CONDITION_TRUE
-
-#define generate_condition_vc(ireg_a, ireg_b) \
-  generate_load_reg(ireg_a, REG_V_FLAG); condition_check = CONDITION_FALSE
-
-#define generate_condition_hi(ireg_a, ireg_b) \
-  do { \
-    generate_load_reg(ireg_a, REG_C_FLAG); \
-    generate_xor_imm(ireg_a, 1); \
-    generate_load_reg(ireg_b, REG_Z_FLAG); \
-    generate_or(ireg_a, ireg_b); \
-    condition_check = CONDITION_FALSE; \
-  } while(0)
-
-#define generate_condition_ls(ireg_a, ireg_b) \
-  do { \
-    generate_load_reg(ireg_a, REG_C_FLAG); \
-    generate_xor_imm(ireg_a, 1); \
-    generate_load_reg(ireg_b, REG_Z_FLAG); \
-    generate_or(ireg_a, ireg_b); \
-    condition_check = CONDITION_TRUE; \
-  } while(0)
-
-#define generate_condition_ge(ireg_a, ireg_b) \
-  do { \
-    generate_load_reg(ireg_a, REG_N_FLAG); \
-    generate_load_reg(ireg_b, REG_V_FLAG); \
-    condition_check = CONDITION_EQUAL; \
-  } while(0)
-
-#define generate_condition_lt(ireg_a, ireg_b) \
-  do { \
-    generate_load_reg(ireg_a, REG_N_FLAG); \
-    generate_load_reg(ireg_b, REG_V_FLAG); \
-    condition_check = CONDITION_NOT_EQUAL; \
-  } while(0)
-
-#define generate_condition_gt(ireg_a, ireg_b) \
-  do { \
-    generate_load_reg(ireg_a, REG_N_FLAG); \
-    generate_load_reg(ireg_b, REG_V_FLAG); \
-    generate_xor(ireg_b, ireg_a); \
-    generate_load_reg(a0, REG_Z_FLAG); \
-    generate_or(ireg_a, ireg_b); \
-    condition_check = CONDITION_FALSE; \
-  } while(0)
-
-#define generate_condition_le(ireg_a, ireg_b) \
-  do { \
-    generate_load_reg(ireg_a, REG_N_FLAG); \
-    generate_load_reg(ireg_b, REG_V_FLAG); \
-    generate_xor(ireg_b, ireg_a); \
-    generate_load_reg(a0, REG_Z_FLAG); \
-    generate_or(ireg_a, ireg_b); \
-    condition_check = CONDITION_TRUE; \
-  } while(0)
-
-#define generate_condition(ireg_a, ireg_b) \
-  switch(condition) { \
-    case 0x0: generate_condition_eq(ireg_a, ireg_b); break; \
-    case 0x1: generate_condition_ne(ireg_a, ireg_b); break; \
-    case 0x2: generate_condition_cs(ireg_a, ireg_b); break; \
-    case 0x3: generate_condition_cc(ireg_a, ireg_b); break; \
-    case 0x4: generate_condition_mi(ireg_a, ireg_b); break; \
-    case 0x5: generate_condition_pl(ireg_a, ireg_b); break; \
-    case 0x6: generate_condition_vs(ireg_a, ireg_b); break; \
-    case 0x7: generate_condition_vc(ireg_a, ireg_b); break; \
-    case 0x8: generate_condition_hi(ireg_a, ireg_b); break; \
-    case 0x9: generate_condition_ls(ireg_a, ireg_b); break; \
-    case 0xA: generate_condition_ge(ireg_a, ireg_b); break; \
-    case 0xB: generate_condition_lt(ireg_a, ireg_b); break; \
-    case 0xC: generate_condition_gt(ireg_a, ireg_b); break; \
-    case 0xD: generate_condition_le(ireg_a, ireg_b); break; \
-    default: break; \
-  }
-
-#define generate_conditional_branch_type(ireg_a, ireg_b) \
-  switch(condition_check) { \
-    case CONDITION_TRUE: generate_conditional_branch(ireg_a, ireg_b, true, backpatch_address); break; \
-    case CONDITION_FALSE: generate_conditional_branch(ireg_a, ireg_b, false, backpatch_address); break; \
-    case CONDITION_EQUAL: generate_conditional_branch(ireg_a, ireg_b, equal, backpatch_address); break; \
-    case CONDITION_NOT_EQUAL: generate_conditional_branch(ireg_a, ireg_b, not_equal, backpatch_address); break; \
-  }
-
-#define arm_conditional_block_header() \
-  generate_condition(a0, a1); \
-  generate_conditional_branch_type(a0, a1)
+/* generate_load_reg_pc, generate_store_reg_pc_*, the generate_condition_*
+   family, generate_conditional_branch_type, arm_conditional_block_header,
+   and generate_branch live in sh4_instr.inc (included below), mirroring the
+   x86 backend layout.  Keeping second copies here only produced macro
+   redefinition warnings; the sh4_instr.inc definitions always won. */
 
 #define generate_translation_gate(type) \
   do { \

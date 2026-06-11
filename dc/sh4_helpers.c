@@ -490,18 +490,17 @@ u32 function_cc execute_load_u32(u32 address)
 
 u32 function_cc execute_mul_regs(u32 rm, u32 rs)
 {
-  u32 result = rm * rs;
-  __asm__ __volatile__("mov %0,r4" : : "r" (result) : "r4");
-  return result;
+  return rm * rs;
 }
 
+/* 64-bit multiply results return through the REG_SAVE/REG_SAVE2 mailbox;
+   the emitted code reloads them with two register loads.  (Returning them
+   in r4/r5 via inline asm was unsound: the compiler is free to clobber
+   caller-saved registers between the asm and the function return.) */
 static void sh4_set_mul_result(u32 lo, u32 hi)
 {
-  __asm__ __volatile__(
-    "mov %0,r4\n\t"
-    "mov %1,r5"
-    : : "r" (lo), "r" (hi) : "r4", "r5"
-  );
+  reg[REG_SAVE] = lo;
+  reg[REG_SAVE2] = hi;
 }
 
 void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,

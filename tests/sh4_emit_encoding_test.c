@@ -33,6 +33,15 @@ void sh4_invalidate_icache_region(u32 addr, u32 size)
   invalidate_count++;
 }
 
+static u32 fatal_error_count;
+static const char *fatal_error_detail;
+
+void gpsp_dynarec_fatal_error(const char *detail)
+{
+  fatal_error_count++;
+  fatal_error_detail = detail;
+}
+
 static u16 code_buffer[64];
 static int failures;
 
@@ -188,6 +197,221 @@ static void test_conditional_skip_patch(void)
       printf("conditional skip far patch: ok\n");
     }
   }
+}
+
+static void test_far_conditional_skip(void)
+{
+  u8 *skip;
+  u8 *near_target;
+  u8 *far_target;
+  u8 *veneer_end;
+  u32 *literal;
+  u32 literal_value;
+  u16 hop_word;
+  u16 expected_hop;
+  u16 expected_bra;
+
+  /* Shape: bf hop + nop, then an absolute-jump slot the hop lands past. */
+  reset_buffer();
+  SH4_EMIT_COND_SKIP_T_FAR(skip);
+  veneer_end = (u8 *)translation_ptr;
+  hop_word = code_buffer[0];
+  expected_hop = 0x8B00 |
+   (sh4_relative_offset_words(code_buffer, veneer_end) & 0xFF);
+
+  if(hop_word != expected_hop || code_buffer[1] != 0x0009 ||
+   ((u16 *)skip)[0] != 0xD101 || ((u16 *)skip)[1] != 0x412B)
+  {
+    printf("far conditional skip shape failed: hop=%04x expected=%04x "
+     "slot=%04x %04x\n", hop_word, expected_hop, ((u16 *)skip)[0],
+     ((u16 *)skip)[1]);
+    failures++;
+  }
+  else
+  {
+    printf("far conditional skip shape: ok\n");
+  }
+
+  /* Polarity: SKIP_F hops with bt instead of bf. */
+  reset_buffer();
+  SH4_EMIT_COND_SKIP_F_FAR(skip);
+  if((code_buffer[0] & 0xFF00) != 0x8900)
+  {
+    printf("far conditional skip polarity failed: hop=%04x\n", code_buffer[0]);
+    failures++;
+  }
+  else
+  {
+    printf("far conditional skip polarity: ok\n");
+  }
+
+  /* Near patch through the conditional dispatcher rewrites the veneer to
+     bra/nop. */
+  reset_buffer();
+  SH4_EMIT_COND_SKIP_T_FAR(skip);
+  SH4_EMIT_NOP();
+  near_target = (u8 *)translation_ptr;
+  expected_bra = 0xA000 |
+   (sh4_relative_offset_words(skip, near_target) & 0x0FFF);
+  generate_branch_patch_conditional(skip, near_target);
+  if(((u16 *)skip)[0] != expected_bra || ((u16 *)skip)[1] != 0x0009)
+  {
+    printf("far conditional skip near patch failed: got %04x %04x\n",
+     ((u16 *)skip)[0], ((u16 *)skip)[1]);
+    failures++;
+  }
+  else
+  {
+    printf("far conditional skip near patch: ok\n");
+  }
+
+  /* Far patch keeps the veneer and fills its literal: this is the case the
+     12-bit bra slot could not represent. */
+  reset_buffer();
+  SH4_EMIT_COND_SKIP_T_FAR(skip);
+  far_target = skip + 0x10000;
+  generate_branch_patch_conditional(skip, far_target);
+  literal = sh4_long_branch_literal(skip);
+  memcpy(&literal_value, literal, sizeof(literal_value));
+  if(((u16 *)skip)[0] != 0xD101 ||
+   literal_value != (u32)(unsigned long)far_target)
+  {
+    printf("far conditional skip far patch failed: %04x literal=%08x\n",
+     ((u16 *)skip)[0], literal_value);
+    failures++;
+  }
+  else
+  {
+    printf("far conditional skip far patch: ok\n");
+  }
+}
+
+/* Minimal translate-loop context so arm_conditional_block_header() can be
+   expanded as-is: the header scans block_data for the same-condition run
+   and picks the near or far skip shape. */
+#define REG_N_FLAG 16
+#define REG_Z_FLAG 17
+#define REG_C_FLAG 18
+#define REG_V_FLAG 19
+#define arm_instruction_width 4
+
+typedef struct
+{
+  u8 condition;
+} test_block_data_type;
+
+static test_block_data_type block_data[64];
+
+static void test_conditional_header_run_selection(void)
+{
+  u32 condition = 0x01; /* NE */
+  u32 last_condition = 0x01;
+  s32 block_data_position = 0;
+  u32 pc = 0x08000000;
+  u32 block_end_pc = pc + (64 * arm_instruction_width);
+  u8 *backpatch_address = (u8 *)0;
+  int i;
+
+  (void)condition;
+
+  /* Short run (2 instructions): worst-case estimate fits the 12-bit bra,
+     so the skip slot must be the near bra filler. */
+  for(i = 0; i < 64; i++)
+    block_data[i].condition = 0x0E;
+  block_data[0].condition = 0x01;
+  block_data[1].condition = 0x01;
+
+  reset_buffer();
+  {
+    condition_check_type condition_check;
+    arm_conditional_block_header();
+  }
+
+  if(backpatch_address == NULL ||
+   (*((u16 *)backpatch_address) & 0xF000) != 0xA000)
+  {
+    printf("conditional header near selection failed: slot=%04x\n",
+     backpatch_address ? *((u16 *)backpatch_address) : 0);
+    failures++;
+  }
+  else
+  {
+    printf("conditional header near selection: ok\n");
+  }
+
+  /* Long run (20 instructions): the estimate exceeds the bra reach, so the
+     header must reserve the far absolute-jump slot instead. */
+  for(i = 0; i < 20; i++)
+    block_data[i].condition = 0x01;
+
+  backpatch_address = (u8 *)0;
+  reset_buffer();
+  {
+    condition_check_type condition_check;
+    arm_conditional_block_header();
+  }
+
+  if(backpatch_address == NULL || ((u16 *)backpatch_address)[0] != 0xD101 ||
+   ((u16 *)backpatch_address)[1] != 0x412B)
+  {
+    printf("conditional header far selection failed: slot=%04x %04x\n",
+     backpatch_address ? ((u16 *)backpatch_address)[0] : 0,
+     backpatch_address ? ((u16 *)backpatch_address)[1] : 0);
+    failures++;
+  }
+  else
+  {
+    printf("conditional header far selection: ok\n");
+  }
+}
+
+static void test_conditional_skip_range_backstop(void)
+{
+  u8 *skip;
+  u32 fatal_before = fatal_error_count;
+
+  /* Patching a short bra slot with an unreachable target must fail loudly
+     instead of emitting a silently truncated branch. */
+  reset_buffer();
+  generate_branch_filler_true(a0, a1, skip);
+  generate_branch_patch_conditional(skip, skip + 0x4000);
+
+  if(fatal_error_count != fatal_before + 1)
+  {
+    printf("conditional skip range backstop failed: no fatal error\n");
+    failures++;
+  }
+  else
+  {
+    printf("conditional skip range backstop: ok\n");
+  }
+}
+
+static void test_cycle_update_guard(void)
+{
+  u32 cycle_count = 0;
+
+  /* A zero cycle balance must not emit a load/sub pair. */
+  reset_buffer();
+  generate_cycle_update();
+  if(translation_ptr != code_buffer)
+  {
+    printf("cycle update guard failed: emitted %zu words for zero count\n",
+     (size_t)(translation_ptr - code_buffer));
+    failures++;
+    return;
+  }
+
+  cycle_count = 3;
+  generate_cycle_update();
+  if(translation_ptr == code_buffer || cycle_count != 0)
+  {
+    printf("cycle update guard failed: nonzero count emitted nothing\n");
+    failures++;
+    return;
+  }
+
+  printf("cycle update guard: ok\n");
 }
 
 static void test_load_imm_encodings(void)
@@ -376,6 +600,10 @@ int main(void)
   test_shift_and_call_encodings();
   test_branch_filler_polarity();
   test_conditional_skip_patch();
+  test_far_conditional_skip();
+  test_conditional_header_run_selection();
+  test_conditional_skip_range_backstop();
+  test_cycle_update_guard();
   test_load_imm_encodings();
   test_branch_patch_and_veneer();
   test_long_branch_filler_patch();

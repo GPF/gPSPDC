@@ -921,11 +921,15 @@ u32 function_cc execute_rrx(u32 value)
     generate_indirect_branch_arm();                                           \
   }                                                                           \
 
+extern u32 bios_read_protect;
+
 static u32 x86_take_pending_irq(u32 return_pc)
 {
   if((io_registers[REG_IE] & io_registers[REG_IF]) &&
    io_registers[REG_IME] && ((reg[REG_CPSR] & 0x80) == 0))
   {
+    /* Match raise_interrupt(): BIOS open-bus value for the IRQ entry. */
+    bios_read_protect = 0xe55ec002;
     reg_mode[MODE_IRQ][6] = return_pc + 4;
     spsr[MODE_IRQ] = reg[REG_CPSR];
     reg[REG_CPSR] = 0xD2;
@@ -1312,18 +1316,22 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
     generate_branch_patch_conditional(_skip_irq, translation_ptr);            \
   } while(0)                                                                  \
 
-#define arm_psr_store_finish(cpsr)                                            \
+/* Suffix dispatch: defining arm_psr_store_finish twice with a parameter
+   named cpsr/spsr made the spsr definition shadow the cpsr one, so MSR
+   CPSR silently called execute_store_spsr (same bug fixed in the SH-4
+   backend). */
+#define arm_psr_store_finish_cpsr()                                           \
   generate_load_pc(a2, pc);                                                   \
   generate_function_call(execute_store_cpsr);                                 \
   arm_psr_store_cpsr_post()                                                   \
 
-#define arm_psr_store_finish(spsr)                                            \
+#define arm_psr_store_finish_spsr()                                           \
   generate_function_call(execute_store_spsr)                                  \
 
 #define arm_psr_store(op_type, psr_reg)                                       \
   arm_psr_load_new_##op_type();                                               \
   generate_load_imm(a1, psr_masks[psr_field]);                                \
-  arm_psr_store_finish(psr_reg)                                               \
+  arm_psr_store_finish_##psr_reg()                                            \
 
 #define arm_psr(op_type, transfer_type, psr_reg)                              \
 {                                                                             \

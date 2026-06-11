@@ -2,7 +2,7 @@ name: Dreamcast build
 
 on:
   push:
-    branches: [dreamcast, 'cursor/**']
+    branches: [dreamcast, 'cursor/**', 'claude/**']
   pull_request:
     branches: [dreamcast]
 

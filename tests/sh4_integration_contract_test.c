@@ -108,10 +108,18 @@ static void test_sh4_stub_async_exit_contract(void)
   expect_contains("dispatch cycle reload", text, "mov %[cyc], r13");
   expect_contains("dispatch stack capture", text,
    "__asm__ __volatile__(\"mov r15, %0\" : \"=r\" (sh4_dispatch_stack));");
+  expect_contains("dispatch target pinned off r12/r13/r15", text,
+   "register u8 *dispatch_target asm(\"r0\")");
+  expect_contains("dispatch cycles pinned off r12/r13/r15", text,
+   "register u32 dispatch_cycles asm(\"r3\")");
   expect_count("dispatch lookup call sites", text, "sh4_lookup_pc(cycles);",
-   10);
+   13);
   expect_count("update_gba cycle capture", text, "cycles = update_gba();",
    4);
+  expect_count("irq alert dispatches without update_gba", text,
+   "if(result == CPU_ALERT_IRQ)", 3);
+  expect_count("flags collapsed before slow-path stores", text,
+   "collapse_flags();\n    result = write_memory", 3);
   expect_count("old store update_gba result capture", text,
    "result = update_gba();", 0);
   expect_count("old leaking pc lookup helper", text,
@@ -171,6 +179,9 @@ static void test_sh4_helpers_irq_contract(void)
    "void function_cc execute_mul_long_regs_u64(u32 rm, u32 rs, u32 acc_lo,");
   expect_count("old shared mul long accumulate helper", text,
    "execute_mul_long_regs(u32", 0);
+  expect_contains("mul long result mailbox lo", text, "reg[REG_SAVE] = lo;");
+  expect_contains("mul long result mailbox hi", text, "reg[REG_SAVE2] = hi;");
+  expect_count("old register-contract mul asm", text, "__asm__", 0);
 
   free(text);
   if(failures == failures_before)
@@ -204,6 +215,16 @@ static void test_sh4_psr_store_contract(void)
    "generate_load_reg(a3, rdhi);");
   expect_count("mul long acc_hi in callee-saved reg", text,
    "generate_load_reg(s0, rdhi);", 0);
+  expect_contains("mul long lo reloaded from mailbox", text,
+   "generate_load_reg(a0, REG_SAVE);");
+  expect_contains("mul long hi reloaded from mailbox", text,
+   "generate_load_reg(a1, REG_SAVE2);");
+  expect_count("mul result taken from rv, not a register contract", text,
+   "generate_mov(a0, rv);", 3);
+  expect_contains("long conditional runs use far skip", text,
+   "generate_conditional_branch_type_far(a0, a1);");
+  expect_contains("conditional run estimate bound", text,
+   "#define SH4_ARM_MAX_EMIT_BYTES_PER_INSN 512");
 
   free(text);
   if(failures == failures_before)
