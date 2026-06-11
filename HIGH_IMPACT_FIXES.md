@@ -2,6 +2,10 @@
 
 Analysis of the highest-impact fixes for the **gPSPDC** Dreamcast port (`dreamcast` branch).
 
+> **Open work now lives in [ROADMAP.md](ROADMAP.md)** — the unified plan that
+> consolidates every remaining risk, TODO, and later-phase item from this file
+> and the other planning docs. This file records what has been completed.
+
 ---
 
 ## Phase 0 — Restore `blit_to_screen()` (P0)
@@ -189,6 +193,7 @@ Unified gamepak swap paging in `memory.c`:
 | **7** | Stable build | Small | KOS cross-compile CI, romdisk, docker helper ✓ |
 | **8** | Audio/sprite/build/menu polish | Small | Correctness, build hygiene, menu responsiveness ✓ |
 | **10** | External validation track | Medium | MIT regression packs, CPU parity tests, ZIP/UI dependency audits |
+| **11** | Dynarec audit 3 | Medium | IRQ timing/flags on IO writes, dispatch register pinning, far conditional skips, mul result mailbox ✓ |
 
 ```mermaid
 flowchart TD
@@ -218,6 +223,53 @@ flowchart TD
 - **P4:** KOS / `mkdcdisc` pinning notes for easier contributor builds
 
 See [EXTERNAL_VALIDATION.md](EXTERNAL_VALIDATION.md) and run `sh scripts/fetch-external-validation.sh`.
+
+---
+
+## Phase 11 — Dynarec audit 3 (stub, helpers, emit)
+
+**Status:** Complete
+
+Third audit pass over `dc/sh4_stub.c`, `dc/sh4_helpers.c`, `dc/sh4_emit.h`,
+and `dc/sh4_instr.inc`, with the in-tree MIPS stub and x86 backend as
+references:
+
+- **Dispatch register hazard** — `sh4_dispatch_block()` overwrites r12/r13/r15
+  inside its asm; the inputs are now pinned to r0–r3 with explicit `register
+  ... asm` bindings so the allocator can never hand an input one of the
+  clobbered registers.
+- **DMA IRQ alerts** — store helpers now dispatch `CPU_ALERT_IRQ` straight to
+  `sh4_lookup_pc()` with the live cycle counter (MIPS `irq_alert` parity)
+  instead of running the `update_gba()` halt loop, which billed the rest of
+  the current video/timer period before it elapsed.
+- **Flag snapshot before IO writes** — `collapse_flags()` now runs before the
+  slow-path `write_memory*` call: a DMA completion inside the write calls
+  `raise_interrupt()`, which snapshots `reg[REG_CPSR]` into SPSR_irq, so the
+  NZCV bits must be current or the IRQ handler returns with stale flags.
+- **Far conditional skips** — the ARM per-condition block header estimates the
+  same-condition run's worst-case emitted size from scan data
+  (`SH4_ARM_MAX_EMIT_BYTES_PER_INSN`) and emits a bt/bf hop over an
+  absolute-jump slot when the 12-bit bra (±4 KB) might not reach.
+  `generate_branch_patch_conditional` dispatches on the slot shape and calls
+  `gpsp_dynarec_fatal_error()` instead of emitting a silently truncated bra
+  if a short slot can't reach its target.
+- **MUL/MULL result contract** — 64-bit multiply helpers return results
+  through the `reg[REG_SAVE]`/`reg[REG_SAVE2]` mailbox and `MUL` consumes the
+  normal `r0` return value; the old inline-asm "leave it in r4/r5" contract
+  was unsound (the compiler may clobber caller-saved registers between the
+  asm and the return).
+- **Dead duplicate macros removed** — `sh4_emit.h` no longer carries second
+  copies of macros that `sh4_instr.inc` redefines (`generate_condition_*`,
+  `generate_store_reg_pc_*`, `arm_conditional_block_header`, …), which only
+  produced redefinition warnings.
+- **`generate_cycle_update()`** skips emission when the cycle balance is zero.
+- **x86 host backend** — fixed the `arm_psr_store_finish` macro shadowing that
+  made MSR CPSR call `execute_store_spsr` (same bug previously fixed on SH-4),
+  and `x86_take_pending_irq()` now sets `bios_read_protect` like
+  `raise_interrupt()`.
+- **CI** — workflows also trigger on `claude/**` branches.
+- **Host tests** — far-skip shape/polarity/patch tests, range backstop test,
+  cycle-update guard test, and updated stub/helper/emit contracts.
 
 ---
 

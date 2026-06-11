@@ -406,6 +406,30 @@
       break;                                                                  \
   }                                                                           \
 
+#define generate_conditional_branch_type_far(ireg_a, ireg_b)                  \
+  switch(condition_check)                                                     \
+  {                                                                           \
+    case CONDITION_TRUE:                                                      \
+      generate_conditional_branch_far(ireg_a, ireg_b, true,                   \
+       backpatch_address);                                                    \
+      break;                                                                  \
+                                                                              \
+    case CONDITION_FALSE:                                                     \
+      generate_conditional_branch_far(ireg_a, ireg_b, false,                  \
+       backpatch_address);                                                    \
+      break;                                                                  \
+                                                                              \
+    case CONDITION_EQUAL:                                                     \
+      generate_conditional_branch_far(ireg_a, ireg_b, equal,                  \
+       backpatch_address);                                                    \
+      break;                                                                  \
+                                                                              \
+    case CONDITION_NOT_EQUAL:                                                 \
+      generate_conditional_branch_far(ireg_a, ireg_b, not_equal,              \
+       backpatch_address);                                                    \
+      break;                                                                  \
+  }                                                                           \
+
 #define generate_branch()                                                     \
 {                                                                             \
   generate_branch_cycle_update(                                               \
@@ -481,6 +505,7 @@
   generate_load_reg(a0, rm);                                                  \
   generate_load_reg(a1, rs);                                                  \
   generate_multiply(a1);                                                      \
+  generate_mov(a0, rv);                                                       \
   arm_multiply_add_##add_op();                                                \
   generate_store_reg(a0, rd);                                                 \
   arm_multiply_flags_##flags();                                               \
@@ -503,12 +528,17 @@
 #define arm_multiply_long_add_no(name)                                        \
   generate_multiply_##name(a1)                                                \
 
+/* The helper returns the 64-bit product through reg[REG_SAVE]/[REG_SAVE2]   \
+   (see sh4_set_mul_result); reload both halves before storing rdlo/rdhi     \
+   and computing flags. */                                                    \
 #define arm_multiply_long(name, add_op, flags)                                \
 {                                                                             \
   arm_decode_multiply_long();                                                 \
   generate_load_reg(a0, rm);                                                  \
   generate_load_reg(a1, rs);                                                  \
   arm_multiply_long_add_##add_op(name);                                       \
+  generate_load_reg(a0, REG_SAVE);                                            \
+  generate_load_reg(a1, REG_SAVE2);                                           \
   generate_store_reg(a0, rdlo);                                               \
   generate_store_reg(a1, rdhi);                                               \
   arm_multiply_long_flags_##flags();                                          \
@@ -1075,9 +1105,40 @@ data_proc_generate_logic_test_function(teq, rn ^ rm);
 data_proc_generate_sub_test_function(cmp, rn, rm);
 data_proc_generate_add_test_function(cmn, rn, rm);
 
+/* Generous upper bound on the SH-4 code one translated ARM instruction can
+   emit (worst observed shapes - flag-setting shifted operands plus a PC
+   store epilogue - stay under ~350 bytes).  Used to decide when a
+   conditional run needs the far skip instead of the 12-bit bra. */
+#define SH4_ARM_MAX_EMIT_BYTES_PER_INSN 512
+
+/* The header's skip hops over the whole run of consecutive instructions
+   sharing this condition.  Estimate the run's worst-case emitted size from
+   the scan data; if it could exceed the bra reach (+/-4KB), emit the
+   far-capable skip shape.  generate_branch_patch_conditional dispatches on
+   the slot shape at patch time and fails loudly if the estimate was ever
+   wrong. */
 #define arm_conditional_block_header()                                        \
+{                                                                             \
+  u32 _run_insns = 1;                                                         \
+  s32 _scan = block_data_position + 1;                                        \
+  s32 _scan_limit = block_data_position +                                     \
+   (s32)((block_end_pc - pc) / arm_instruction_width);                        \
+  while((_scan < _scan_limit) &&                                              \
+   (block_data[_scan].condition == last_condition))                           \
+  {                                                                           \
+    _run_insns++;                                                             \
+    _scan++;                                                                  \
+  }                                                                           \
   generate_condition(a0, a1);                                                 \
-  generate_conditional_branch_type(a0, a1);                                   \
+  if((_run_insns * SH4_ARM_MAX_EMIT_BYTES_PER_INSN) > 4000)                   \
+  {                                                                           \
+    generate_conditional_branch_type_far(a0, a1);                             \
+  }                                                                           \
+  else                                                                        \
+  {                                                                           \
+    generate_conditional_branch_type(a0, a1);                                 \
+  }                                                                           \
+}                                                                             \
 
 #define arm_b()                                                               \
   generate_branch()                                                           \
