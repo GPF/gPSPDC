@@ -236,7 +236,7 @@ static void gpsp_dc_trace_loaded_rom(const char *stage)
    stage, reg[REG_PC], reg[REG_CPSR], reg[CPU_MODE], reg[CPU_HALT_STATE]);
 }
 #else
-#define GPSP_DC_TRACE_EVERY(counter, fmt, ...) ((void)0)
+#define GPSP_DC_TRACE_EVERY(counter, fmt, ...) ((void)(counter))
 #define gpsp_dc_trace_vram_dirty() ((void)0)
 #define gpsp_dc_trace_loaded_rom(stage) ((void)0)
 #endif
@@ -385,10 +385,6 @@ static s32 gpsp_load_autoload_filename(u8 *load_filename,
 
 int main(int argc, char *argv[])
 {
-  u32 i;
-  u32 vcount = 0;
-  u32 ticks;
-  u32 dispstat;
   u8 load_filename[512];
 #ifdef _arch_dreamcast
   gpsp_boot_trace("gPSPDC boot: entering main");

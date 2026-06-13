@@ -42,7 +42,7 @@ void process_cheats();
 void add_cheats(u8 *cheats_filename);
 u32 cheat_pc_is_hook(u32 pc);
 
-#define MAX_CHEATS 8
+#define MAX_CHEATS 10
 #define MAX_CHEAT_HOOKS 8
 
 extern cheat_type cheats[MAX_CHEATS];

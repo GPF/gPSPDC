@@ -141,7 +141,9 @@ static void __attribute__((noreturn)) sh4_lookup_pc(u32 cycles)
 
 u32 sh4_update_gba(u32 pc)
 {
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
   static u32 trace_update_count;
+#endif
   u32 cycles;
 
   reg[REG_PC] = pc;

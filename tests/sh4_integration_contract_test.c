@@ -54,6 +54,25 @@ static char *read_text_file(const char *path)
 
   buffer[size] = '\0';
   fclose(fp);
+
+  {
+    char *read_cursor = buffer;
+    char *write_cursor = buffer;
+
+    while(*read_cursor != '\0')
+    {
+      if(*read_cursor != '\r')
+      {
+        *write_cursor = *read_cursor;
+        write_cursor++;
+      }
+
+      read_cursor++;
+    }
+
+    *write_cursor = '\0';
+  }
+
   return buffer;
 }
 
