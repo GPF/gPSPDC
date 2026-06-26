@@ -26,7 +26,12 @@ This container cannot cross-compile (no KOS toolchain / Docker daemon). Run the
 build on a machine with Docker:
 
 ```sh
-# From repo root — clean rebuild of the Dreamcast ELF via the CI toolchain image
+# From repo root — validate the disc layout first (BIOS, autoload ROM, config).
+# dc.sh runs this automatically, but checking up front catches problems before
+# the slow cross-compile.
+./scripts/check-disc.sh
+
+# Clean rebuild of the Dreamcast ELF via the CI toolchain image
 rm -f dc/gdC.elf
 ./scripts/dc-build.sh            # produces dc/gdC.elf
 
