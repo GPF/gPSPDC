@@ -1,6 +1,7 @@
 # Hardware Smoke Test Results
 
 Record Flycast or Dreamcast results for [HARDWARE_SMOKE_TEST.md](../HARDWARE_SMOKE_TEST.md).
+Follow the build + run procedure in [flycast-test.md](flycast-test.md).
 
 **Host contract tests** (`make -C tests test`): pass on CI — these verify source contracts only, not on-target FPS, menu feel, or large-ROM gameplay.
 
@@ -22,7 +23,12 @@ Record Flycast or Dreamcast results for [HARDWARE_SMOKE_TEST.md](../HARDWARE_SMO
 | 14 | ROM buffer fatal error | | |
 | 15 | Dynarec fatal error | | |
 
-**Environment:** (Flycast version / DC hardware / disc or ELF load method)
+**Environment:** Flycast win64-2.6 (known-good), CDI load. Known-good config:
+`RamMod32MB=yes`, `Dynarec.Enabled=yes`, `Sh4Clock=200`, `UseReios=no`,
+`FastGDRomLoad=no`, `pvr.rend=2`, `rend.ThreadedRendering=yes`,
+`aica.BufferSize=2822`. See [flycast-test.md](flycast-test.md) §2.
+
+**Disc:** `dc/gbapspDC.cdi` from `dc/dc.sh`; autoloads `DangerousXmas.bin`.
 
 **Date:**
 

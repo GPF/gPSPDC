@@ -29,6 +29,10 @@ fi
 
 "$ROOT/../scripts/sync-game-config.sh"
 
+# Refuse to build a disc that will not boot cleanly (bad BIOS, autoload ROM
+# missing, etc.). Runs after the config sync so the disc game_config is checked.
+"$ROOT/../scripts/check-disc.sh"
+
 require_cmd sh-elf-objcopy
 require_cmd mkdcdisc
 

@@ -209,6 +209,69 @@ static void test_game_config_sync_contract(void)
   printf("game config sync contract: ok\n");
 }
 
+/* Read the first line of a text file with trailing whitespace/CR stripped. */
+static int read_first_line(const char *path, char *out, size_t out_size)
+{
+  FILE *fp = fopen(path, "rb");
+  size_t len;
+
+  if(fp == NULL)
+    return -1;
+
+  if(fgets(out, (int)out_size, fp) == NULL)
+  {
+    fclose(fp);
+    return -1;
+  }
+  fclose(fp);
+
+  len = strlen(out);
+  while(len > 0 && (out[len - 1] == '\n' || out[len - 1] == '\r' ||
+   out[len - 1] == ' ' || out[len - 1] == '\t'))
+    out[--len] = '\0';
+
+  return 0;
+}
+
+static void test_disc_layout_contract(void)
+{
+  char *dc_sh = read_text_file("../dc/dc.sh");
+  char *check = read_text_file("../scripts/check-disc.sh");
+  char rom[256];
+  char rom_path[512];
+
+  /* The bootable disc ships a BIOS and a license-clean autoload ROM. */
+  expect_path_exists("../dc/cd/gba_bios.bin");
+  expect_path_exists("../dc/cd/gbaDC/game_config.txt");
+  expect_path_exists("../dc/cd/gbaDC/autoload.txt");
+
+  /* dc.sh must run the preflight, and the preflight must guard BIOS+autoload. */
+  expect_contains("dc.sh runs preflight", dc_sh, "check-disc.sh");
+  expect_contains("preflight checks bios md5", check,
+   "a860e8c0b6d573d191e4ec7db1b1e4f6");
+  expect_contains("preflight checks autoload", check, "autoload.txt");
+
+  /* The committed autoload ROM must actually exist in the tree, or a clean
+     checkout builds a CDI that fails on first boot (the bug this guards). */
+  if(read_first_line("../dc/cd/gbaDC/autoload.txt", rom, sizeof(rom)) != 0)
+  {
+    printf("disc layout failed: cannot read autoload.txt\n");
+    failures++;
+  }
+  else if(rom[0] != '\0')
+  {
+    snprintf(rom_path, sizeof(rom_path), "../dc/cd/gbaDC/%s", rom);
+    expect_path_exists(rom_path);
+  }
+
+  if(dc_sh != NULL)
+    free(dc_sh);
+  if(check != NULL)
+    free(check);
+
+  printf("disc layout contract: ok\n");
+}
+
 int main(void)
 {
   failures = 0;
@@ -216,6 +279,7 @@ int main(void)
   test_makefile_sources();
   test_dreamcast_ci_contract();
   test_game_config_sync_contract();
+  test_disc_layout_contract();
 
   if(failures != 0)
   {
