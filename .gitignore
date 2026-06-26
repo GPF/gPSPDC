@@ -4,6 +4,7 @@ dc/gdC.elf
 dc/gdC.bin
 dc/1ST_READ.BIN
 dc/gbapspDC.cdi
+dc/*.cdi
 dc/romdisk.img
 dc/romdisk.o
 *.bin
