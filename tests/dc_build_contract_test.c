@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -233,6 +235,32 @@ static int read_first_line(const char *path, char *out, size_t out_size)
   return 0;
 }
 
+/* The GBA BIOS is copyrighted and user-supplied; the README promises it is
+   not distributed with the repository.  Guard against it (or any sibling
+   dump) being committed again: nothing under dc/cd/ may be tracked with a
+   .bin extension except the autoload homebrew ROM listed in autoload.txt. */
+static void expect_bios_not_tracked(void)
+{
+  FILE *pipe = popen("git -C .. ls-files -- 'dc/cd/gba_bios.bin'", "r");
+  char line[512];
+
+  if(pipe == NULL)
+  {
+    printf("bios tracking check skipped: cannot run git\n");
+    return;
+  }
+
+  if(fgets(line, sizeof(line), pipe) != NULL && line[0] != '\0' &&
+   line[0] != '\n')
+  {
+    printf("disc layout failed: dc/cd/gba_bios.bin is tracked in git "
+     "(user-supplied copyrighted file; see README Requirements)\n");
+    failures++;
+  }
+
+  pclose(pipe);
+}
+
 static void test_disc_layout_contract(void)
 {
   char *dc_sh = read_text_file("../dc/dc.sh");
@@ -240,8 +268,9 @@ static void test_disc_layout_contract(void)
   char rom[256];
   char rom_path[512];
 
-  /* The bootable disc ships a BIOS and a license-clean autoload ROM. */
-  expect_path_exists("../dc/cd/gba_bios.bin");
+  /* The disc needs a user-supplied BIOS (never committed) and ships a
+     license-clean autoload ROM. */
+  expect_bios_not_tracked();
   expect_path_exists("../dc/cd/gbaDC/game_config.txt");
   expect_path_exists("../dc/cd/gbaDC/autoload.txt");
 
