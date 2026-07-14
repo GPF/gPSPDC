@@ -114,7 +114,7 @@ Commercial GBA titles can be up to 32 MB. gPSPDC loads them from GD-ROM under `/
 
 | Topic | Detail |
 |-------|--------|
-| Resident buffer | Tries **16 → 12 → 8 → 4 MB** at startup (`memory.c`); on a stock 16 MB Dreamcast, expect **8 MB or 4 MB** after KOS, SDL, and translation caches claim RAM. |
+| Resident buffer | A conservative **4 MB** allocation at startup (`memory.c`), leaving heap headroom for KOS, SDL, and later allocations on a stock 16 MB Dreamcast. Anything larger is demand-paged. |
 | Uncompressed ROMs | Use `.gba` or `.bin` for titles larger than the resident buffer. Paging reads from the open disc file during play. |
 | Zip ROMs | The first `.gba`/`.bin` inside a `.zip` must fit **entirely** in the resident buffer. Larger zipped games will not load — extract to `.gba` on the disc instead. |
 | Full speed | Paging from GD-ROM costs seek/read time on each 32 KB miss. Adjacent-page prefetch reduces sequential misses; titles still need `game_config.txt` idle-loop entries for dynarec speed. Use frameskip if needed. |

@@ -273,6 +273,41 @@ references:
 
 ---
 
+## Phase 12 — Dynarec audit 4 (translation cache, repo hygiene, x86 host build)
+
+- **EWRAM multi-page flush bug (crash class)** — when translated EWRAM code
+  spanned more than one 32 KB page, `flush_translation_cache_ram()` never
+  cleared the first page's tag tail or the last page's tag head, and cleared
+  page 0's tags instead. Stale tags survived the flush and sent execution
+  into the reset translation cache (tag numbers are reused from 0x0101 after
+  a flush, so a stale tag dispatches to another block's code — or garbage).
+  Present since the original import; now clears every touched page's tag
+  range, with a phase 9 contract guarding the pattern.
+- **Committed GBA BIOS removed from tracking** — `dc/cd/gba_bios.bin` (the
+  real, copyrighted Nintendo BIOS) was tracked in git despite the README
+  promising it is user-supplied. It is now untracked (`*.bin` was already in
+  `.gitignore`), and the disc-layout contract test asserts it is *not*
+  tracked instead of requiring it to exist. Note: the blob remains in git
+  history; scrubbing history is a separate decision.
+- **x86 host backend un-bitrotted (C level)** — `cpu_threaded.c` had drifted
+  to the SH-4 backend's contracts and no longer compiled against
+  `x86/x86_emit.h`: `translation_ptr_t` was undefined, `arm_block_memory`
+  still had the old 5-argument shape (with pre-adjust variants that no
+  longer matched the shared call sites), and `generate_update_pc_reg` /
+  `set_cpu_mode` were undeclared. The x86 backend now defines
+  `translation_ptr_t`, routes ARM LDM/STM through an
+  `execute_arm_block_memory` C helper identical in semantics to the SH-4
+  helper and the audited interpreter (writeback after transfers, LDM
+  base-in-list suppression, S-bit user bank, STM PC = pc + 8), and gained a
+  `generate_update_pc_reg()` that syncs through `x86_update_gba`. All C
+  sources now compile on a 64-bit host; `x86_stub.S` still requires a
+  32-bit toolchain to assemble/link (ROADMAP D2).
+- **Docs** — README's resident-buffer row now matches the code (a single
+  conservative 4 MB allocation, contract-tested) instead of the old
+  16 → 12 → 8 → 4 MB ladder.
+
+---
+
 ## Already addressed (recent commits)
 
 - Cheat code loading from `/cd/gbaDC/`
