@@ -87,6 +87,13 @@ static void test_stability_contract(void)
   expect_contains("external exit bounds", cpu_c,
    "external_block_exit_position >= MAX_EXITS");
   expect_contains("translation redo limit", cpu_c, "translation_redo_attempts");
+  /* Multi-page EWRAM flush must clear the first page's tag tail and the
+     last page's tag head, not page 0 (stale tags -> jumps into a reset
+     translation cache). */
+  expect_contains("ewram flush min page tail", cpu_c,
+   "0x8000 - ewram_code_min_offset");
+  expect_contains("ewram flush max page head", cpu_c,
+   "ewram + (ewram_code_max_page * 0x10000)");
   expect_contains("null dynarec target guard", sh4_c, "if(target == NULL)");
   expect_contains("sound timer mutex", sound_c, "SDL_LockMutex(sound_mutex)");
   expect_contains("zip filename cap", zip_c, "sizeof(tmp)");

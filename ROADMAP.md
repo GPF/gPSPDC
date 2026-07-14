@@ -62,7 +62,7 @@ needs a failing test to justify divergence.
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | D1 | `input.c:902` — "FIXME: Not implemented properly for x86 version" (host SDL input path) | open | Affects host debugging builds only |
-| D2 | Host x86 dynarec build is untested in CI (root `Makefile` → `x86/`) | open | The MSR-shadowing and `bios_read_protect` fixes from audit 3 are in, but nothing builds/runs it automatically |
+| D2 | Host x86 dynarec build is untested in CI (root `Makefile` → `x86/`) | open | Audit 4 restored C-level compilation (`translation_ptr_t`, 4-arg `arm_block_memory` via `execute_arm_block_memory` helper, `generate_update_pc_reg`); remaining gap is `x86_stub.S` + link, which need a 32-bit toolchain (`as --32`, `-m32`, 32-bit SDL) |
 | D3 | `USE_MINIZ=1` ZIP backend: build and compare heap headroom vs zlib on DC | open | Phase 10 P1; miniz already vendored |
 | D4 | VMU save indicator / save-in-progress feedback | open | Quality-of-life; saves currently silent |
 | D5 | BIOS-free boot (HLE BIOS) | open | Large; upstream gpSP never fully solved it. Keep documented as out of scope unless demand appears |
