@@ -3023,7 +3023,7 @@ block_lookup_address_builder(dual);
       block_data[block_data_position].condition |= 0x20;                      \
     break;                                                                    \
   }
-                                                                              \
+
 #define arm_link_block()                                                      \
   translation_target = block_lookup_address_arm(branch_target)                \
 
@@ -3537,12 +3537,21 @@ sh4_invalidate_icache_region((u32)ram_translation_cache,
     }
     else
     {
+      /* Each 64KB EWRAM chunk holds 32KB of translation tags followed by
+         32KB of data; clear the tag ranges of every page the code span
+         touches.  (This used to skip the first page's tail and the last
+         page's head and clear page 0 instead - stale tags after a flush
+         sent execution into the reset translation cache.) */
+      memset(ewram + (ewram_code_min_page * 0x10000) +
+       ewram_code_min_offset, 0, 0x8000 - ewram_code_min_offset);
+
       for(i = ewram_code_min_page + 1; i < ewram_code_max_page; i++)
       {
         memset(ewram + (i * 0x10000), 0, 0x8000);
       }
 
-      memset(ewram, 0, ewram_code_max_offset);
+      memset(ewram + (ewram_code_max_page * 0x10000), 0,
+       ewram_code_max_offset);
     }
   }
 
