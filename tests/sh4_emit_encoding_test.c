@@ -6,6 +6,11 @@
 #define CPU_H
 #define function_cc
 
+#ifdef _MSC_VER
+/* Encoding tests do not call the declared noreturn dispatch routines. */
+#define __attribute__(attributes)
+#endif
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef int32_t s32;
@@ -419,8 +424,7 @@ static void test_load_imm_encodings(void)
   const u16 expected[] = {
     0xE47F,                         /* mov #0x7f,r4 */
     0xE480,                         /* mov #-0x80,r4 */
-    0xE400, 0x4418, 0x4418, 0x4418, /* 0x00000080 */
-    0x747F, 0x7401,
+    0xE480, 0x644C,                 /* 0x00000080: mov/extu.b */
     0xE412, 0x4418, 0x7434,         /* 0x12345678 */
     0x4418, 0x7456, 0x4418, 0x7478,
     0xE408, 0x4418, 0x4418,         /* 0x08000068 */
@@ -593,8 +597,11 @@ static void test_icache_range_hook(void)
   }
 }
 
+#include "sh4_emit_simulator.h"
+
 int main(void)
 {
+  test_executed_emission();
   test_load_store_encodings();
   test_alu_encodings();
   test_shift_and_call_encodings();

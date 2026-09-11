@@ -1,8 +1,9 @@
 name: Host tests
 
 on:
+  workflow_dispatch:
   push:
-    branches: [dreamcast, 'cursor/**', 'claude/**']
+    branches: [dreamcast, 'cursor/**', 'claude/**', 'codex/**']
   pull_request:
     branches: [dreamcast]
 

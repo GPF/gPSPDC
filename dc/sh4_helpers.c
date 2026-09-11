@@ -21,9 +21,9 @@ extern u32 bios_read_protect;
 #define calculate_z_flag(dest) (reg[REG_Z_FLAG] = ((dest) == 0))
 #define calculate_n_flag(dest) (reg[REG_N_FLAG] = ((signed)(dest) < 0))
 #define calculate_c_flag_sub(dest, src_a, src_b) (reg[REG_C_FLAG] = ((unsigned)(src_b) <= (unsigned)(src_a)))
-#define calculate_v_flag_sub(dest, src_a, src_b) (reg[REG_V_FLAG] = ((signed)(src_b) > (signed)(src_a)) != ((signed)(dest) < 0))
+#define calculate_v_flag_sub(dest, src_a, src_b) (reg[REG_V_FLAG] = (((src_a) ^ (src_b)) & ((src_a) ^ (dest))) >> 31)
 #define calculate_c_flag_add(dest, src_a, src_b) (reg[REG_C_FLAG] = ((unsigned)(dest) < (unsigned)(src_a)))
-#define calculate_v_flag_add(dest, src_a, src_b) (reg[REG_V_FLAG] = ((signed)(dest) < (signed)(src_a)) != ((signed)(src_b) < 0))
+#define calculate_v_flag_add(dest, src_a, src_b) (reg[REG_V_FLAG] = ((~((src_a) ^ (src_b))) & ((src_a) ^ (dest))) >> 31)
 #define calculate_flags_add(dest, src_a, src_b) do { calculate_z_flag(dest); calculate_n_flag(dest); calculate_c_flag_add(dest, src_a, src_b); calculate_v_flag_add(dest, src_a, src_b); } while(0)
 #define calculate_flags_sub(dest, src_a, src_b) do { calculate_z_flag(dest); calculate_n_flag(dest); calculate_c_flag_sub(dest, src_a, src_b); calculate_v_flag_sub(dest, src_a, src_b); } while(0)
 #define calculate_flags_logic(dest) do { calculate_z_flag(dest); calculate_n_flag(dest); } while(0)
@@ -78,19 +78,38 @@ u32 function_cc execute_subs(u32 rm, u32 rn) { u32 dest = rn - rm; calculate_fla
 u32 function_cc execute_rsb(u32 rm, u32 rn) { return rm - rn; }
 u32 function_cc execute_rsbs(u32 rm, u32 rn) { u32 dest = rm - rn; calculate_flags_sub(dest, rm, rn); return dest; }
 u32 function_cc execute_sbc(u32 rm, u32 rn) { return rn - rm - (reg[REG_C_FLAG] ^ 1); }
-u32 function_cc execute_sbcs(u32 rm, u32 rn) { u32 dest = rn - rm - (reg[REG_C_FLAG] ^ 1); calculate_flags_sub(dest, rn, rm); return dest; }
+u32 function_cc execute_sbcs(u32 rm, u32 rn)
+{
+  u32 carry = reg[REG_C_FLAG];
+  u32 dest = rn - rm - (carry ^ 1);
+  calculate_flags_sub(dest, rn, rm);
+  /* ARM C is no-borrow, including the incoming borrow. */
+  reg[REG_C_FLAG] = (rn > rm) || ((rn == rm) && carry);
+  return dest;
+}
 u32 function_cc execute_rsc(u32 rm, u32 rn) { return rm + reg[REG_C_FLAG] - 1 - rn; }
-u32 function_cc execute_rscs(u32 rm, u32 rn) { u32 dest = rm + reg[REG_C_FLAG] - 1 - rn; calculate_flags_sub(dest, rm, rn); return dest; }
+u32 function_cc execute_rscs(u32 rm, u32 rn)
+{
+  return execute_sbcs(rn, rm);
+}
 u32 function_cc execute_add(u32 rm, u32 rn) { return rn + rm; }
 u32 function_cc execute_adds(u32 rm, u32 rn) { u32 dest = rn + rm; calculate_flags_add(dest, rn, rm); return dest; }
 u32 function_cc execute_adc(u32 rm, u32 rn) { return rn + rm + reg[REG_C_FLAG]; }
-u32 function_cc execute_adcs(u32 rm, u32 rn) { u32 dest = rn + rm + reg[REG_C_FLAG]; calculate_flags_add(dest, rn, rm); return dest; }
+u32 function_cc execute_adcs(u32 rm, u32 rn)
+{
+  u32 carry = reg[REG_C_FLAG];
+  u32 dest = rn + rm + carry;
+  calculate_flags_add(dest, rn, rm);
+  reg[REG_C_FLAG] = (dest < rn) || ((dest == rn) && carry);
+  return dest;
+}
 void function_cc execute_tst(u32 rm, u32 rn) { u32 dest = rn & rm; calculate_z_flag(dest); calculate_n_flag(dest); }
 void function_cc execute_teq(u32 rm, u32 rn) { u32 dest = rn ^ rm; calculate_z_flag(dest); calculate_n_flag(dest); }
 void function_cc execute_cmp(u32 rm, u32 rn) { u32 dest = rn - rm; calculate_flags_sub(dest, rn, rm); }
 void function_cc execute_cmn(u32 rm, u32 rn) { u32 dest = rn + rm; calculate_flags_add(dest, rn, rm); }
 u32 function_cc execute_lsl_no_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
     if(shift > 31)
@@ -102,6 +121,7 @@ u32 function_cc execute_lsl_no_flags_reg(u32 value, u32 shift)
 }
 u32 function_cc execute_lsr_no_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
     if(shift > 31)
@@ -113,6 +133,7 @@ u32 function_cc execute_lsr_no_flags_reg(u32 value, u32 shift)
 }
 u32 function_cc execute_asr_no_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
     if(shift > 31)
@@ -124,15 +145,15 @@ u32 function_cc execute_asr_no_flags_reg(u32 value, u32 shift)
 }
 u32 function_cc execute_ror_no_flags_reg(u32 value, u32 shift)
 {
+  /* Rs[7:0] modulo 32 equals Rs[4:0]; never shift C values by 32. */
+  shift &= 31;
   if(shift != 0)
-  {
-    ror(value, value, shift);
-  }
-
+    value = (value >> shift) | (value << (32 - shift));
   return value;
 }
 u32 function_cc execute_lsl_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
     if(shift > 31)
@@ -154,6 +175,7 @@ u32 function_cc execute_lsl_flags_reg(u32 value, u32 shift)
 }
 u32 function_cc execute_lsr_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
     if(shift > 31)
@@ -175,6 +197,7 @@ u32 function_cc execute_lsr_flags_reg(u32 value, u32 shift)
 }
 u32 function_cc execute_asr_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
     if(shift > 31)
@@ -192,12 +215,13 @@ u32 function_cc execute_asr_flags_reg(u32 value, u32 shift)
 }
 u32 function_cc execute_ror_flags_reg(u32 value, u32 shift)
 {
+  shift &= 0xFF;
   if(shift != 0)
   {
-    reg[REG_C_FLAG] = (value >> (shift - 1)) & 0x01;
-    ror(value, value, shift);
+    value = execute_ror_no_flags_reg(value, shift);
+    /* Nonzero multiples of 32 preserve the value but set C to bit 31. */
+    reg[REG_C_FLAG] = value >> 31;
   }
-
   return value;
 }
 u32 function_cc execute_rrx_flags(u32 value)
@@ -217,6 +241,9 @@ u32 function_cc execute_spsr_restore(u32 address)
   reg[REG_CPSR] = spsr[reg[CPU_MODE]];
   extract_flags();
   set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
+  /* Exception returns select ARM/Thumb from SPSR, not the target's bit 0.
+     Align before an IRQ snapshots the return address into LR_irq. */
+  address &= (reg[REG_CPSR] & 0x20) ? ~1u : ~3u;
   irq_pc = sh4_take_pending_irq(address);
   if(irq_pc != 0)
     address = irq_pc;
@@ -250,6 +277,8 @@ u32 function_cc execute_read_spsr()
 }
 u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc)
 {
+  /* ALU helpers keep NZCV in separate slots until explicitly collapsed. */
+  collapse_flags();
   reg[REG_CPSR] = (new_cpsr & store_mask) | (reg[REG_CPSR] & (~store_mask));
   extract_flags();
   if(store_mask & 0xFF)
@@ -288,77 +317,25 @@ void function_cc execute_aligned_store32(u32 address, u32 source)
 }
 u32 function_cc execute_lsl_reg_op(u32 value, u32 shift)
 {
-  if(shift != 0)
-  {
-    if(shift > 31)
-    {
-      if(shift == 32)
-        reg[REG_C_FLAG] = value & 0x01;
-      else
-        reg[REG_C_FLAG] = 0;
-
-      value = 0;
-    }
-    else
-    {
-      reg[REG_C_FLAG] = (value >> (32 - shift)) & 0x01;
-      value <<= shift;
-    }
-  }
-
+  value = execute_lsl_flags_reg(value, shift);
   calculate_flags_logic(value);
   return value;
 }
 u32 function_cc execute_lsr_reg_op(u32 value, u32 shift)
 {
-  if(shift != 0)
-  {
-    if(shift > 31)
-    {
-      if(shift == 32)
-        reg[REG_C_FLAG] = (value >> 31) & 0x01;
-      else
-        reg[REG_C_FLAG] = 0;
-
-      value = 0;
-    }
-    else
-    {
-      reg[REG_C_FLAG] = (value >> (shift - 1)) & 0x01;
-      value >>= shift;
-    }
-  }
-
+  value = execute_lsr_flags_reg(value, shift);
   calculate_flags_logic(value);
   return value;
 }
 u32 function_cc execute_asr_reg_op(u32 value, u32 shift)
 {
-  if(shift != 0)
-  {
-    if(shift > 31)
-    {
-      value = (s32)value >> 31;
-      reg[REG_C_FLAG] = value & 0x01;
-    }
-    else
-    {
-      reg[REG_C_FLAG] = (value >> (shift - 1)) & 0x01;
-      value = (s32)value >> shift;
-    }
-  }
-
+  value = execute_asr_flags_reg(value, shift);
   calculate_flags_logic(value);
   return value;
 }
 u32 function_cc execute_ror_reg_op(u32 value, u32 shift)
 {
-  if(shift != 0)
-  {
-    reg[REG_C_FLAG] = (value >> (shift - 1)) & 0x01;
-    ror(value, value, shift);
-  }
-
+  value = execute_ror_flags_reg(value, shift);
   calculate_flags_logic(value);
   return value;
 }

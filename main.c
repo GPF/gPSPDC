@@ -935,6 +935,7 @@ void quit()
   if(!update_backup_flag)
     update_backup_force();
 
+  gpsp_finish_save_notice();
   sound_exit();
 
 #ifdef PSP_BUILD

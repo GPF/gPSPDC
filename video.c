@@ -3215,6 +3215,7 @@ u32 screen_flip = 0;
 
 void flip_screen()
 {
+  gpsp_draw_save_notice();
   if(video_direct == 0)
   {
     u32 *old_ge_cmd_ptr = ge_cmd_ptr;
@@ -3275,6 +3276,7 @@ void flip_screen()
 
 void flip_screen()
 {
+  gpsp_draw_save_notice();
 #if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
   static u32 trace_flip_screen;
 

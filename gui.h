@@ -28,6 +28,9 @@ s32 load_game_config_file();
 s32 load_config_file();
 s32 save_game_config_file();
 s32 save_config_file();
+void gpsp_save_error(const char *kind, const char *filename);
+void gpsp_draw_save_notice(void);
+void gpsp_finish_save_notice(void);
 u32 menu(u16 *original_screen);
 
 extern u32 savestate_slot;

@@ -187,7 +187,7 @@ u8 *load_gamepak_page(u32 physical_index);
 void memory_write_mem_savestate(file_tag_type savestate_file);
 void memory_read_savestate(file_tag_type savestate_file);
 void load_state(char *savestate_filename);
-void save_state(char *savestate_filename, u16 *screen_capture);
+s32 save_state(char *savestate_filename, u16 *screen_capture);
 
 extern u8 *gamepak_rom;
 extern u32 gamepak_ram_buffer_size;

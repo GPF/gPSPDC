@@ -1965,30 +1965,65 @@ u32 save_backup(char *name)
           break;
       }
 
-      file_write(backup_file, gamepak_backup, backup_size);
-      file_close(backup_file);
-      return 1;
+      s32 valid = file_write_ok(backup_file, gamepak_backup, backup_size);
+      if(file_close(backup_file) != 0)
+        valid = 0;
+      return valid;
     }
   }
 
   return 0;
 }
 
+/* Back off independently of the dirty countdown, which game writes reset. */
+static u32 backup_retry_frames;
+static u32 backup_failure_reported;
+
 void update_backup()
 {
-  if(backup_update != (write_backup_delay + 1))
+  if(backup_update == write_backup_delay + 1)
+    return;
+  if(backup_update > 0)
     backup_update--;
-
+  if(backup_retry_frames > 0)
+  {
+    backup_retry_frames--;
+    return;
+  }
   if(backup_update == 0)
   {
-    save_backup(backup_filename);
-    backup_update = write_backup_delay + 1;
+    if(backup_type == BACKUP_NONE || save_backup(backup_filename))
+    {
+      backup_update = write_backup_delay + 1;
+      backup_failure_reported = 0;
+    }
+    else
+    {
+      backup_retry_frames = 300;
+      if(!backup_failure_reported)
+        gpsp_save_error("Game backup", (char *)backup_filename);
+      backup_failure_reported = 1;
+    }
   }
 }
 
 void update_backup_force()
 {
-  save_backup(backup_filename);
+  if(backup_type == BACKUP_NONE)
+    return;
+  if(save_backup(backup_filename))
+  {
+    backup_update = write_backup_delay + 1;
+    backup_retry_frames = 0;
+    backup_failure_reported = 0;
+  }
+  else
+  {
+    backup_update = 0;
+    backup_retry_frames = 300;
+    gpsp_save_error("Game backup", (char *)backup_filename);
+    backup_failure_reported = 1;
+  }
 }
 
 #define CONFIG_FILENAME "game_config.txt"
@@ -2228,6 +2263,9 @@ u32 load_gamepak(char *name)
     change_ext(gamepak_filename, backup_filename, ".sav");
 
     load_backup(backup_filename);
+    backup_retry_frames = 0;
+    backup_failure_reported = 0;
+    backup_update = write_backup_delay + 1;
 
     memcpy(gamepak_title, gamepak_rom + 0xA0, 12);
     memcpy(gamepak_code, gamepak_rom + 0xAC, 4);
@@ -3338,8 +3376,9 @@ void load_state(char *savestate_filename)
 u8 savestate_write_buffer[506947];
 u8 *write_mem_ptr;
 
-void save_state(char *savestate_filename, u16 *screen_capture)
+s32 save_state(char *savestate_filename, u16 *screen_capture)
 {
+  s32 valid = 0;
   write_mem_ptr = savestate_write_buffer;
 
   if(sound_initialized)
@@ -3358,9 +3397,10 @@ void save_state(char *savestate_filename, u16 *screen_capture)
     file_write_mem_variable(savestate_file, current_time);
 
     savestate_block(write_mem);
-    file_write(savestate_file, savestate_write_buffer,
+    valid = file_write_ok(savestate_file, savestate_write_buffer,
      sizeof(savestate_write_buffer));
-    file_close(savestate_file);
+    if(file_close(savestate_file) != 0)
+      valid = 0;
   }
 
   if(sound_initialized)
@@ -3368,6 +3408,9 @@ void save_state(char *savestate_filename, u16 *screen_capture)
     SDL_PauseAudio(0);
     SDL_UnlockMutex(sound_mutex);
   }
+  if(!valid)
+    gpsp_save_error("Savestate", savestate_filename);
+  return valid ? 0 : -1;
 }
 
 

@@ -23,3 +23,5 @@ tests/dc_build_contract_test
 tests/phase8_dreamcast_polish_test
 tests/phase9_stability_test
 tests/phase10_external_validation_test
+
+tests/sh4_helpers_behavior_test

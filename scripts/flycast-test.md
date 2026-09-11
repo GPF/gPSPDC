@@ -48,14 +48,14 @@ green before building:
 make -C tests test
 ```
 
-## 2. Known-good Flycast configuration
+## 2. Stock-memory validation configuration
 
-These settings were verified booting the port to in-game on Flycast
-`win64-2.6` (see `debug-report-2026-06-12.md`). Set them in Flycast before
-loading the CDI:
+Use these settings for the next stock 16 MB validation run. The June 12
+report observed gameplay on Flycast `win64-2.6` with 32 MB enabled; it
+does not establish a pass for this configuration.
 
 ```text
-Dreamcast.RamMod32MB = yes      # 32 MB RAM mod — needed for large-ROM paging headroom
+Dreamcast.RamMod32MB = no       # Stock 16 MB validation baseline
 Dynarec.Enabled     = yes
 Sh4Clock            = 200
 UseReios            = no         # use the real flow, not HLE BIOS
@@ -98,3 +98,7 @@ Fill in pass/fail for every row in
 [smoke-test-results.md](smoke-test-results.md), including the Flycast version and
 the date. Any failure is a concrete repro to feed back into Track B/C of the
 roadmap. When rows 1–8 pass, Track E1 (tag a release) is unblocked.
+
+## Validation baseline
+
+Use `Dreamcast.RamMod32MB = no` for stock Dreamcast checks, including large-ROM paging. This is the required baseline, not a recorded pass. The June 12 gameplay observations used `RamMod32MB = yes`; keep those as separate 32 MB observations. Record the tested commit, any local changes, CDI SHA-256, Flycast version, RAM setting, and each observed result in `smoke-test-results.md`.

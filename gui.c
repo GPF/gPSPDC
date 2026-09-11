@@ -49,6 +49,54 @@
 #define COLOR_FRAMESKIP_BAR color16(15, 31, 31)
 #define COLOR_HELP_TEXT     color16(16, 40, 24)
 
+/* Nonfatal feedback also covers saves triggered by bound gameplay buttons. */
+static char save_notice[40];
+static u32 save_notice_started;
+static u32 save_notice_active;
+
+void gpsp_save_error(const char *kind, const char *filename)
+{
+  snprintf(save_notice, sizeof(save_notice), "%s save failed", kind);
+  printf("%s: %s\n", save_notice, filename);
+  save_notice_started = SDL_GetTicks();
+  save_notice_active = 1;
+  flip_screen();
+}
+
+void gpsp_draw_save_notice(void)
+{
+  if(save_notice_active &&
+   (u32)(SDL_GetTicks() - save_notice_started) < 6000)
+  {
+    print_string(save_notice, 0xFFFF, 0x0000, 0, 0);
+    print_string("Check writable storage.", 0xFFFF, 0x0000, 0, 10);
+  }
+  else
+    save_notice_active = 0;
+}
+
+void gpsp_finish_save_notice(void)
+{
+  gui_action_type action;
+  if(!save_notice_active ||
+   (u32)(SDL_GetTicks() - save_notice_started) >= 6000)
+    return;
+  /* The quit action may still be held; require a fresh confirmation. */
+  print_string("A/Start: exit anyway", 0xFFFF, 0x0000, 0, 20);
+  flip_screen();
+  do
+  {
+    delay_us(16000);
+    action = get_gui_input();
+  } while(action != CURSOR_NONE);
+  do
+  {
+    delay_us(16000);
+    action = get_gui_input();
+  } while(action != CURSOR_SELECT);
+  save_notice_active = 0;
+}
+
 int sort_function(const void *dest_str_ptr, const void *src_str_ptr)
 {
   char *dest_str = *((char **)dest_str_ptr);
@@ -723,11 +771,13 @@ s32 load_game_config_file()
     u32 file_size = file_length(game_config_filename, game_config_file);
 
     // Sanity check: File size must be the right size
-    if(file_size == 56)
+    u32 file_options[14];
+    u32 valid = file_size == sizeof(file_options) &&
+     file_read_ok(game_config_file, file_options, sizeof(file_options));
+    if(file_close(game_config_file) != 0)
+      valid = 0;
+    if(valid)
     {
-      u32 file_options[file_size / 4];
-
-      file_read_array(game_config_file, file_options);
       current_frameskip_type = file_options[0] % 3;
       frameskip_value = file_options[1];
       random_skip = file_options[2] & 1;
@@ -746,7 +796,6 @@ s32 load_game_config_file()
         frameskip_value = 99;
 
 
-      file_close(game_config_file);
       file_loaded = 1;
     }
   }
@@ -783,12 +832,17 @@ s32 load_config_file()
     u32 file_size = file_length(config_path, config_file);
 
     // Sanity check: File size must be the right size
-    if(file_size == 92)
+    u32 file_options[23];
+    u32 valid = file_size == sizeof(file_options) &&
+     file_read_ok(config_file, file_options, sizeof(file_options));
+    if(file_close(config_file) != 0)
+      valid = 0;
+    if(!valid)
+      return -1;
     {
-      u32 file_options[file_size / 4];
       u32 i;
       s32 menu_button = -1;
-      file_read_array(config_file, file_options);
+
 
       screen_scale = file_options[0] % 3;
       screen_filter = file_options[1] % 2;
@@ -821,7 +875,7 @@ s32 load_config_file()
         gamepad_config_map[0] = BUTTON_ID_MENU;
       }
 
-      file_close(config_file);
+
     }
 
     return 0;
@@ -835,6 +889,8 @@ s32 save_game_config_file()
   u8 game_config_filename[512];
   u32 i;
 
+  if(!gamepak_filename[0])
+    return 0;
   change_ext(gamepak_filename, game_config_filename, ".cfg");
 
   file_open(game_config_file, game_config_filename, write);
@@ -853,12 +909,15 @@ s32 save_game_config_file()
       file_options[4 + i] = cheats[i].cheat_active;
     }
 
-    file_write_array(game_config_file, file_options);
-    file_close(game_config_file);
-
-    return 0;
+    s32 valid = file_write_ok(game_config_file, file_options,
+     sizeof(file_options));
+    if(file_close(game_config_file) != 0)
+      valid = 0;
+    if(valid)
+      return 0;
   }
 
+  gpsp_save_error("Game settings", (char *)game_config_filename);
   return -1;
 }
 
@@ -873,7 +932,7 @@ s32 save_config_file()
 
   file_open(config_file, config_path, write);
 
-  save_game_config_file();
+  s32 game_result = save_game_config_file();
 
   if(file_check_valid(config_file))
   {
@@ -893,12 +952,15 @@ s32 save_config_file()
       file_options[7 + i] = gamepad_config_map[i];
     }
 
-    file_write_array(config_file, file_options);
-    file_close(config_file);
-
-    return 0;
+    s32 valid = file_write_ok(config_file, file_options,
+     sizeof(file_options));
+    if(file_close(config_file) != 0)
+      valid = 0;
+    if(valid)
+      return game_result;
   }
 
+  gpsp_save_error("Settings", (char *)config_path);
   return -1;
 }
 
@@ -1117,7 +1179,8 @@ u32 menu(u16 *original_screen)
     {
       get_savestate_filename_noshot(savestate_slot,
        current_savestate_filename);
-      save_state(current_savestate_filename, original_screen);
+      if(save_state(current_savestate_filename, original_screen) != 0)
+        return;
     }
     menu_change_state();
   }
@@ -1317,12 +1380,9 @@ u32 menu(u16 *original_screen)
     string_selection_option(NULL, "Update backup",
      update_backup_options, &update_backup_flag, 2,
 #ifdef _arch_dreamcast
-     "Determines when in-game save files should be written back to\n"
-     "the GD-ROM image under /cd/gbaDC/. If set to 'automatic' writebacks\n"
-     "will occur shortly\n"
-     "after the game's backup is altered. On 'exit only' it will only be\n"
-     "written back when you exit from this menu.\n"
-     "Use the latter with extreme care.",
+     "Selects when backup writes are attempted. The GD-ROM is read-only.\n"
+     "Disc saves cannot persist; VMU storage is not implemented.\n"
+     "A writable destination is required to keep progress.",
 #else
      "Determines when in-game save files should be written back to\n"
      "memstick. If set to 'automatic' writebacks will occur shortly after\n"

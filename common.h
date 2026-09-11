@@ -67,7 +67,13 @@
     sceIoClose(filename_tag)                                                  \
 
   #define file_read(filename_tag, buffer, size)                               \
-    sceIoRead(filename_tag, buffer, size)                                     \
+    sceIoRead(filename_tag, buffer, size)
+
+  #define file_read_ok(filename_tag, buffer, size) \
+    (sceIoRead(filename_tag, buffer, size) == (s32)(size))
+
+  #define file_write_ok(filename_tag, buffer, size) \
+    (sceIoWrite(filename_tag, buffer, size) == (s32)(size))
 
   #define file_write(filename_tag, buffer, size)                              \
     sceIoWrite(filename_tag, buffer, size)                                    \
@@ -116,7 +122,10 @@
     (fread((buffer), (size), 1, (filename_tag)) == 1)                         \
 
   #define file_write(filename_tag, buffer, size)                              \
-    fwrite(buffer, size, 1, filename_tag)                                     \
+    fwrite(buffer, size, 1, filename_tag)
+
+  #define file_write_ok(filename_tag, buffer, size) \
+    (fwrite(buffer, size, 1, filename_tag) == 1)
 
   #define file_seek(filename_tag, offset, type)                               \
     fseek(filename_tag, offset, type)                                         \

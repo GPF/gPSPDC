@@ -341,13 +341,15 @@ static inline void sh4_patch_cond_hop(void *hop, const void *target)
     if(_signed_imm >= -128 && _signed_imm <= 127) { \
       SH4_EMIT_MOVI((rd), _imm); \
     } else { \
-      SH4_EMIT_LOAD_U8((rd), _imm >> 24); \
-      SH4_EMIT_SHLL8((rd)); \
-      SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm >> 16); \
-      SH4_EMIT_SHLL8((rd)); \
-      SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm >> 8); \
-      SH4_EMIT_SHLL8((rd)); \
-      SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm); \
+      u32 _imm_shift = 24; \
+      /* Skip leading zero bytes at translation time, not at runtime. */ \
+      while(_imm_shift && ((_imm >> _imm_shift) == 0)) _imm_shift -= 8; \
+      SH4_EMIT_LOAD_U8((rd), _imm >> _imm_shift); \
+      while(_imm_shift) { \
+        _imm_shift -= 8; \
+        SH4_EMIT_SHLL8((rd)); \
+        SH4_EMIT_ADD_UNSIGNED_BYTE((rd), _imm >> _imm_shift); \
+      } \
     } \
   } while(0)
 

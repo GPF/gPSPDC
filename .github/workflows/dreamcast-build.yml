@@ -1,8 +1,9 @@
 name: Dreamcast build
 
 on:
+  workflow_dispatch:
   push:
-    branches: [dreamcast, 'cursor/**', 'claude/**']
+    branches: [dreamcast, 'cursor/**', 'claude/**', 'codex/**']
   pull_request:
     branches: [dreamcast]
 
@@ -19,3 +20,9 @@ jobs:
         run: ./scripts/dc-build.sh
       - name: Verify gdC.elf
         run: test -f dc/gdC.elf
+      - name: Upload Dreamcast executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: gPSPDC-${{ github.sha }}
+          path: dc/gdC.elf
+          if-no-files-found: error
