@@ -1,28 +1,28 @@
 # gpSP game settings database
+
+# What is this file??? game_config.txt is a database of settings on a
+# per-game basis. A couple of the settings are required to make games
+# work at all, but most of them are there to improve the performance of
+# a game. If a game doesn't work then look through the settings here,
+# but keep in mind that this file can not be used to fix a majority of
+# games, the ones that don't work because of emulator bugs. For those
+# you'll have to wait for a new release and hope it someday gets fixed.
+
 # This file is meant to be edited in plain text, with a normal editor.
 # game_name, game_code, and vender_code can be found in the game's header.
-# All three must match for the game to be used, and those setting must be in
-# that order. Be sure to use [!] ROMs (verified by GoodGBA) when building
-# this list. Right now I don't know how much overlap there is between
-# different region games.
+# All three must match for the game to be used, and those setting must be
+# in that order. Be sure to use [!] ROMs (verified by GoodGBA) when
+# building this list. Right now I don't know how much overlap there is
+# between different region games, but usually idle loops don't apply to
+# them. If you're using a different region than the one in here you can
+# try copying the entry, it might improve it.
 
-# Find the game identification values by opening the ROM in a hex editor
-# and looking at the following locations:
-
-# 0xA0: name, 12 characters
-# 0xAC: code, 4 characters
-# 0xB0: vender, 2 characters
-
-# Many games should run okay with nothing here, but those that have idle
-# loops will run very slowly. To eliminate idle loops you must find a
-# branch instruction that will result in a loop until something in the
-# hardware changes, like vsync flagging or an interrupt going off. Then
-# set "idle_loop_eliminate_target" to the location of that branch
-# instruction.
-
-# By default "iwram_stack_optimize" is set to yes, but this breaks some
-# games (like Kirby: Nightmare in Dreamland). If a game doesn't work you
-# can try setting it to no.
+# You can also find the three identifying codes on the second line from
+# the top in gpSP's main menu. So anyone should be able to add settings
+# to this file if they know what to set, but for some options it'll take
+# a lot of special knowledge for them to be of any use. Be sure to see if
+# your game is already here, but only if the game_name/game_code/
+# vender_code all match. Only the first full match's settings will be used.
 
 # Everything here is case sensitive. Don't mess with this file unless
 # you know what you're doing - if in doubt sooner ask someone who does.
@@ -31,8 +31,39 @@
 # a game is on here doesn't mean the game actually works in the current
 # version. :/
 
-# If a game uses 128KB flash ROMs set the option flash_rom_type = 128KB
-# for it.
+# These are the following options:
+
+# idle_loop_eliminate_target - tells the recompiler that this branch
+#  is an idle loop and thus a hardware update should follow it every
+#  time. This is purely a speed improvement and is not meant to improve
+#  compatibility - if it does it represents a strange timing problem in
+#  the game. You can only set one of these for now. Don't use this if
+#  you don't know what you're doing, it can break the game. Some games
+#  will run miserably slowly without this option.
+
+# translation_gate_target - tells the recompiler to put an indirect
+#  branch (gate) at this point, so artificially stop the current block.
+#  This is useful if the game performs self modifying code from within
+#  the same block it is currently executing - this can prevent it from
+#  causing SMC hits far more times than it should. This is also only a
+#  speed hack; you can have up to 8 of these. Don't use this if you don't
+#  know what you're doing, they'll just make the game slower and are
+#  rarely helpful (good for Camelot games).
+
+# iwram_stack_optimize - set this to "no" to turn it off. By default this
+#  is set on. It will turn off an optimization that assumes that the stack
+#  is always in IWRAM, and thus makes ldm/stm relative to the stack much
+#  faster. Turning it off will degrade game speed slightly, but is
+#  necessary for a few games that don't follow this convention.
+
+# flash_rom_type - set this to 128KB if the game has a 128KB flash ROM,
+#  otherwise leave it alone or you might break game saving. If you get
+#  a white screen when the game starts try this option.
+
+# bios_rom_hack_39 - a hack that allows "roll" to work with the correct BIOS
+#  in Zelda: Minish Cap.
+
+# bios_rom_hack_2C - like the above but allows Rayman Advance to work.
 
 # Castlevania: Circle of the Moon (U)
 game_name = DRACULA AGB1
@@ -121,6 +152,20 @@ idle_loop_eliminate_target = 0800090c
 # Kirby: Nightmare in Dreamland (U)
 game_name = AGB KIRBY DX
 game_code = A7KE
+vender_code = 01
+idle_loop_eliminate_target = 08000fae
+iwram_stack_optimize = no
+
+# Hoshi no Kirby: Yume no Izumi Deluxe (J)
+game_name = AGB KIRBY DX
+game_code = A7KJ
+vender_code = 01
+idle_loop_eliminate_target = 08000f92
+iwram_stack_optimize = no
+
+# Kirby: Nightmare in Dreamland (E)
+game_name = AGB KIRBY DX
+game_code = A7KP
 vender_code = 01
 idle_loop_eliminate_target = 08000fae
 iwram_stack_optimize = no
@@ -438,6 +483,7 @@ game_code = AGSE
 vender_code = 01
 translation_gate_target = 03000820
 translation_gate_target = 030009ac
+translation_gate_target = 03007dac
 
 # Golden Sun: The Lost Age (U)
 # Probably the most horrifically coded GBA game in existence.
@@ -446,20 +492,29 @@ game_code = AGFE
 vender_code = 01
 idle_loop_eliminate_target = 08013542
 translation_gate_target = 030009ac
-translation_gate_target = 03007d70
+#translation_gate_target = 03007d70
 
+# Nothing to see here :/
 # Mario & Luigi: Superstar Saga (U)
-# Attempted fix. Works on x86 version, not on PSP one (but gets a
-# little further...)
 game_name = MARIO&LUIGIU
 game_code = A88E
 vender_code = 01
-#idle_loop_eliminate_target = 0801da90
-#0801db42
 
 # Mario Party Advance (U)
 game_name = MARIOPARTYUS
 game_code = B8ME
+vender_code = 01
+iwram_stack_optimize = no
+
+# Mario Party Advance (J)
+game_name = MARIOPARTYJA
+game_code = B8MJ
+vender_code = 01
+iwram_stack_optimize = no
+
+# Mario Party Advance (E)
+game_name = MARIOPARTYEU
+game_code = B8MP
 vender_code = 01
 iwram_stack_optimize = no
 
@@ -472,9 +527,84 @@ idle_loop_eliminate_target = 08014e0a
 translation_gate_target = 03000d00
 translation_gate_target = 03000a30
 
+# Mario Golf: GBA Tour (J)
+game_name = MARIOGOLFGBA
+game_code = BMGJ
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
+# Mario Golf: Advance Tour (E)
+game_name = MARIOGOLFGBA
+game_code = BMGP
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
+# Mario Golf: Advance Tour (S)
+game_name = MARIOGOLFGBA
+game_code = BMGS
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
+# Mario Golf: Advance Tour (F)
+game_name = MARIOGOLFGBA
+game_code = BMGF
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
+# Mario Golf: Advance Tour (I)
+game_name = MARIOGOLFGBA
+game_code = BMGI
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
+# Mario Golf: Advance Tour (G)
+game_name = MARIOGOLFGBA
+game_code = BMGD
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
+# Mario Golf: Advance Tour (A)
+game_name = MARIOGOLFGBA
+game_code = BMGU
+vender_code = 01
+iwram_stack_optimize = no
+idle_loop_eliminate_target = 08014e0a
+translation_gate_target = 03000d00
+translation_gate_target = 03000a30
+
 # Tales of Phantasia (U)
 game_name = PHANTASIA
 game_code = AN8E
+vender_code = 01
+iwram_stack_optimize = no
+
+# Tales of Phantasia (J)
+game_name = PHANTASIA
+game_code = AN8J
+vender_code = AF
+iwram_stack_optimize = no
+
+# Tales of Phantasia (E)
+game_name = PHANTASIA
+game_code = AN8P
 vender_code = 01
 iwram_stack_optimize = no
 
@@ -718,3 +848,49 @@ game_name = NIGHTFIRE
 game_code = A7OE
 vender_code = 69
 idle_loop_eliminate_target = 080031d6
+
+# Asterix & Obelix XXL (E)
+game_name = ASTERIX
+game_code = BLXP
+vender_code = 70
+idle_loop_eliminate_target = 0846d060
+
+# Was this game released in Japan? What as?
+# Ninja Five-0 (U)
+game_name = NINJA FIVE 0
+game_code = ANXE
+vender_code = A4
+iwram_stack_optimize = no
+
+# Ninja Cop (E)
+game_name = NINJA COP
+game_code = ANXP
+vender_code = A4
+iwram_stack_optimize = no
+
+# Sennen Kazoku (J)
+game_name = SENNENKAZOKU
+game_code = BKAJ
+vender_code = 01
+flash_rom_type = 128KB
+
+# Doom 2 (U)
+game_name = DOOM II
+game_code = A9DE
+vender_code = 52
+translation_gate_target = 030041c8
+translation_gate_target = 03004fa0
+
+# Bleach Advance (J)
+game_name = BLEACH ADV1
+game_code = BLEJ
+vender_code = 8P
+iwram_stack_optimize = no
+
+# This is needed to make the game work.
+# Another World (Homebrew)
+game_name = FoxAnWorld
+game_code = Home
+vender_code = 00
+translation_gate_target = 03000f1c
+

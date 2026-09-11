@@ -643,7 +643,7 @@ u32 arm_to_mips_reg[] =
   mips_emit_nop();                                                            \
   generate_load_imm(reg_pc, stored_pc)                                        \
 
-#define translate_invalidate_dcache()                                         \
+#define translate_invalidate_dcache_region(cache_start, cache_end)            \
   sceKernelDcacheWritebackAll()                                               \
 
 #define block_prologue_size 8
@@ -2343,6 +2343,12 @@ u8 swi_hle_handle[256] =
   }                                                                           \
 }                                                                             \
 
+#define generate_update_pc_reg()                                              \
+  do {                                                                        \
+    generate_load_pc(reg_a0, pc);                                             \
+    generate_function_call(mips_update_gba);                                  \
+  } while(0)                                                                  \
+
 #define generate_translation_gate(type)                                       \
   generate_load_pc(reg_a0, pc);                                               \
   generate_indirect_branch_no_cycle_update(type)                              \
@@ -2350,5 +2356,8 @@ u8 swi_hle_handle[256] =
 #define generate_step_debug()                                                 \
   generate_load_imm(reg_a0, pc);                                              \
   generate_function_call(step_debug_mips)                                     \
+
+#define arm_process_cheats()
+#define thumb_process_cheats()
 
 #endif

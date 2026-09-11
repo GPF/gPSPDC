@@ -20,6 +20,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#define GPSPDC_VERSION "0.9.1-dc"
+
 #define ror(dest, value, shift)                                               \
   dest = ((value) >> shift) | ((value) << (32 - shift))                       \
 
@@ -45,8 +47,6 @@
   #include <pspdebug.h>
   #include <pspctrl.h>
   #include <pspgu.h>
-  #include <pspaudio.h>
-  #include <pspaudiolib.h>
   #include <psprtc.h>
 
   #define function_cc
@@ -67,7 +67,13 @@
     sceIoClose(filename_tag)                                                  \
 
   #define file_read(filename_tag, buffer, size)                               \
-    sceIoRead(filename_tag, buffer, size)                                     \
+    sceIoRead(filename_tag, buffer, size)
+
+  #define file_read_ok(filename_tag, buffer, size) \
+    (sceIoRead(filename_tag, buffer, size) == (s32)(size))
+
+  #define file_write_ok(filename_tag, buffer, size) \
+    (sceIoWrite(filename_tag, buffer, size) == (s32)(size))
 
   #define file_write(filename_tag, buffer, size)                              \
     sceIoWrite(filename_tag, buffer, size)                                    \
@@ -112,8 +118,14 @@
   #define file_read(filename_tag, buffer, size)                               \
     fread(buffer, size, 1, filename_tag)                                      \
 
+  #define file_read_ok(filename_tag, buffer, size)                            \
+    (fread((buffer), (size), 1, (filename_tag)) == 1)                         \
+
   #define file_write(filename_tag, buffer, size)                              \
-    fwrite(buffer, size, 1, filename_tag)                                     \
+    fwrite(buffer, size, 1, filename_tag)
+
+  #define file_write_ok(filename_tag, buffer, size) \
+    (fwrite(buffer, size, 1, filename_tag) == 1)
 
   #define file_seek(filename_tag, offset, type)                               \
     fseek(filename_tag, offset, type)                                         \
@@ -169,6 +181,12 @@ typedef u32 fixed16_16;
 
 #define address32(base, offset)                                               \
   *((u32 *)((u8 *)base + (offset)))                                           \
+
+#ifdef GPSP_DEBUG
+#define gpsp_debug_printf(...) printf(__VA_ARGS__)
+#else
+#define gpsp_debug_printf(...) ((void)0)
+#endif
 
 #include <time.h>
 #include <stdio.h>

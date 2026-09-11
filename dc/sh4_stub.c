@@ -1,15 +1,19 @@
 #include <kos.h>
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+#include <dc/video.h>
+#include <dc/biosfont.h>
+#endif
 #include "sh4_emit.h"
+#include "cheats.h"
 
-// External declarations
 extern u32 reg[];
 extern u32 spsr[];
-extern u8* memory_map_read[];
-extern u8* memory_map_write[];
+extern u8 *memory_map_read[];
+extern u8 *memory_map_write[];
 extern u32 update_gba();
-extern u8* block_lookup_address_arm(u32 pc);
-extern u8* block_lookup_address_thumb(u32 pc);
-extern u8* block_lookup_address_dual(u32 pc);
+extern u8 *block_lookup_address_arm(u32 pc);
+extern u8 *block_lookup_address_thumb(u32 pc);
+extern u8 *block_lookup_address_dual(u32 pc);
 extern u8 read_memory8(u32 address);
 extern u32 read_memory16(u32 address);
 extern u32 read_memory32(u32 address);
@@ -18,212 +22,416 @@ extern cpu_alert_type write_memory16(u32 address, u16 value);
 extern cpu_alert_type write_memory32(u32 address, u32 value);
 extern void flush_translation_cache_ram();
 extern u32 step_debug(u32 pc, u32 cycles);
+extern void gpsp_dynarec_fatal_error(const char *detail);
 
-// Utility functions
-static inline void collapse_flags() {
- reg[REG_CPSR] = (reg[REG_N_FLAG] << 31) |
- (reg[REG_Z_FLAG] << 30) |
- (reg[REG_C_FLAG] << 29) |
- (reg[REG_V_FLAG ] << 28) |
- (reg[REG_CPSR] & 0xFF);
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+static u32 sh4_trace_y = 396;
+static u32 sh4_trace_last_swi = 0xFFFFFFFF;
+static u32 sh4_trace_last_swi_pc = 0;
+static u32 sh4_trace_last_swi_thumb = 0;
+static u32 sh4_trace_last_emit_pc = 0xFFFFFFFF;
+static u32 sh4_trace_last_emit_source_pc = 0xFFFFFFFF;
+static u32 sh4_trace_last_emit_opcode = 0;
+static u32 sh4_trace_emit_count = 0;
+
+static void sh4_trace_screen(const char *message)
+{
+  u32 y;
+
+  for(y = 0; y < 18; y++)
+    memset(vram_s + ((sh4_trace_y + y) * 640) + 24, 0, 592 * 2);
+
+  bfont_draw_str(vram_s + (sh4_trace_y * 640) + 24, 640, 0,
+   (char *)message);
+  sh4_trace_y += 20;
+  if(sh4_trace_y > 456)
+    sh4_trace_y = 396;
 }
 
-static inline void extract_flags() {
- reg[REG_N_FLAG] = (reg[REG_CPSR] >> 31) & 1;
- reg[REG_Z_FLAG] = (reg[REG_CPSR] >> 30) & 1;
- reg[REG_C_FLAG] = (reg[REG_CPSR] >> 29) & 1;
- reg[REG_V_FLAG] = (reg[REG_CPSR] >> 28) & 1;
+static void sh4_trace_block_words(u32 pc, u8 *target, u32 cycles)
+{
+  char buffer[96];
+  u16 *words = (u16 *)target;
+  u16 *dest;
+  u32 y;
+
+  for(y = 324; y < 374; y++)
+    memset(vram_s + (y * 640) + 24, 0, 592 * 2);
+
+  sprintf(buffer, "dyn pc=%08x tgt=%08x cyc=%u", pc, (u32)target, cycles);
+  dest = vram_s + (324 * 640) + 24;
+  bfont_draw_str(dest, 640, 0, buffer);
+
+  if(target != NULL)
+  {
+    sprintf(buffer, "%04x %04x %04x %04x %04x %04x %04x %04x",
+     words[0], words[1], words[2], words[3],
+     words[4], words[5], words[6], words[7]);
+    dest = vram_s + (348 * 640) + 24;
+    bfont_draw_str(dest, 640, 0, buffer);
+  }
+}
+#endif
+
+static inline void collapse_flags(void)
+{
+  reg[REG_CPSR] = (reg[REG_N_FLAG] << 31) |
+   (reg[REG_Z_FLAG] << 30) |
+   (reg[REG_C_FLAG] << 29) |
+   (reg[REG_V_FLAG] << 28) |
+   (reg[REG_CPSR] & 0xFF);
 }
 
-u32 sh4_update_gba(u32 pc) {
- u32 cycles;
- reg[REG_PC] = pc;
- collapse_flags();
- cycles = update_gba();
- if (reg[CHANGED_PC_STATUS] != 0) {
- u32 new_pc = reg[REG_PC];
- reg[CHANGED_PC_STATUS] = 0;
- if (reg[REG_CPSR] & 0x20) {
- return (u32)block_lookup_address_thumb(new_pc);
- } else {
- return (u32)block_lookup_address_arm(new_pc);
- }
- }
- return cycles;
+static inline void extract_flags_local(void)
+{
+  reg[REG_N_FLAG] = (reg[REG_CPSR] >> 31) & 1;
+  reg[REG_Z_FLAG] = (reg[REG_CPSR] >> 30) & 1;
+  reg[REG_C_FLAG] = (reg[REG_CPSR] >> 29) & 1;
+  reg[REG_V_FLAG] = (reg[REG_CPSR] >> 28) & 1;
 }
 
-void sh4_indirect_branch_arm(u32 address) {
- u8* target = block_lookup_address_arm(address);
- ((void (*)())target)();
+/* Stack base captured inside execute_arm_translate.  Translated code and
+   every re-entry into it runs with r15 reset to this base: blocks never
+   return, so any C frame still live when control dives into a new block
+   would otherwise leak permanently (the x86 stub pops its return address
+   in lookup_pc for the same reason).  Without the reset, every IRQ
+   dispatch, halt wake-up, and SMC flush grows the stack until it
+   overflows mid-game. */
+static u32 sh4_dispatch_stack;
+
+static void __attribute__((noreturn, noinline))
+ sh4_dispatch_block(u8 *target, u32 cycles)
+{
+  /* Pin the operands to caller-saved low registers: the asm overwrites
+     r12/r13/r15, so the register allocator must never hand an input one of
+     those registers (it has no way to know they die mid-template). */
+  register u8 *dispatch_target asm("r0") = target;
+  register u32 dispatch_stack asm("r1") = sh4_dispatch_stack;
+  register u32 *dispatch_base asm("r2") = reg;
+  register u32 dispatch_cycles asm("r3") = cycles;
+
+  __asm__ __volatile__(
+    "mov %[stk], r15\n\t"
+    "mov %[regptr], r12\n\t"
+    "mov %[cyc], r13\n\t"
+    "jmp @%[tgt]\n\t"
+    "nop\n\t"
+    :
+    : [tgt] "r" (dispatch_target), [regptr] "r" (dispatch_base),
+      [cyc] "r" (dispatch_cycles), [stk] "r" (dispatch_stack)
+    : "memory"
+  );
+  __builtin_unreachable();
 }
 
-void sh4_indirect_branch_thumb(u32 address) {
- u8* target = block_lookup_address_thumb(address);
- ((void (*)())target)();
+static void __attribute__((noreturn)) sh4_lookup_pc(u32 cycles)
+{
+  u32 pc = reg[REG_PC];
+  u8 *target;
+
+  reg[CHANGED_PC_STATUS] = 0;
+
+  if(reg[REG_CPSR] & 0x20)
+    target = block_lookup_address_thumb(pc);
+  else
+    target = block_lookup_address_arm(pc);
+
+  sh4_dispatch_block(target, cycles);
 }
 
-void sh4_indirect_branch_dual(u32 address) {
- u8* target = block_lookup_address_dual(address);
- ((void (*)())target)();
+u32 sh4_update_gba(u32 pc)
+{
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  static u32 trace_update_count;
+#endif
+  u32 cycles;
+
+  reg[REG_PC] = pc;
+  collapse_flags();
+  cycles = update_gba();
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  trace_update_count++;
+  if((trace_update_count & 63) == 1)
+  {
+    char buffer[96];
+    sprintf(buffer, "u%u p=%08x e=%08x @%08x",
+     trace_update_count, pc, sh4_trace_last_emit_pc,
+     sh4_trace_last_emit_source_pc);
+    sh4_trace_screen(buffer);
+    sprintf(buffer, "op=%08x ec=%u s=%02x r=%08x",
+     sh4_trace_last_emit_opcode, sh4_trace_emit_count,
+     sh4_trace_last_swi == 0xFFFFFFFF ? 0xFF : sh4_trace_last_swi,
+     sh4_trace_last_swi_pc);
+    sh4_trace_screen(buffer);
+  }
+#endif
+
+  if(reg[CHANGED_PC_STATUS] != 0)
+    sh4_lookup_pc(cycles);
+
+  return cycles;
 }
 
-void function_cc sh4_execute_store_u8(u32 address, u32 value) {
- reg[REG_PC] = address;
- if (!(address & 0xF0000000)) {
- u32 page = address >> 15;
- u8* map = memory_map_write[page];
- if (map) {
- u32 offset = address & 0x7FFF;
- map[offset] = (u8)value;
- if (map[offset - 32768] != 0) {
- flush_translation_cache_ram();
- goto lookup_pc;
- }
- return;
- }
- }
- cpu_alert_type result = write_memory8(address, (u8)value);
- if (result != CPU_ALERT_NONE) {
- collapse_flags();
- if (result == CPU_ALERT_SMC) {
- flush_translation_cache_ram();
- goto lookup_pc;
- }
- do {
- result = update_gba();
- } while (reg[CPU_HALT_STATE] != 0);
- goto lookup_pc;
- }
- return;
-
-lookup_pc:
- reg[CHANGED_PC_STATUS] = 0;
- address = reg[REG_PC];
- if (reg[REG_CPSR] & 0x20) {
- ((void (*)())block_lookup_address_thumb(address))();
- } else {
- ((void (*)())block_lookup_address_arm(address))();
- }
+void sh4_indirect_branch_arm(u32 address, u32 cycles)
+{
+  sh4_dispatch_block(block_lookup_address_arm(address), cycles);
 }
 
-void function_cc sh4_execute_store_u16(u32 address, u32 value) {
- address &= ~0x1;
- reg[REG_PC] = address;
- if (!(address & 0xF0000000)) {
- u32 page = address >> 15;
- u8* map = memory_map_write[page];
- if (map) {
- u32 offset = address & 0x7FFF;
- *(u16*)(map + offset) = (u16)value;
- if (*(u16*)(map + offset - 32768) != 0) {
- flush_translation_cache_ram();
- goto lookup_pc;
- }
- return;
- }
- }
- cpu_alert_type result = write_memory16(address, (u16)value);
- if (result != CPU_ALERT_NONE) {
- collapse_flags();
- if (result == CPU_ALERT_SMC) {
- flush_translation_cache_ram();
- goto lookup_pc;
- }
- do {
- result = update_gba();
- } while (reg[CPU_HALT_STATE] != 0);
- goto lookup_pc;
- }
- return;
-
-lookup_pc:
- reg[CHANGED_PC_STATUS] = 0;
- address = reg[REG_PC];
- if (reg[REG_CPSR] & 0x20) {
- ((void (*)())block_lookup_address_thumb(address))();
- } else {
- ((void (*)())block_lookup_address_arm(address))();
- }
+void sh4_indirect_branch_thumb(u32 address, u32 cycles)
+{
+  sh4_dispatch_block(block_lookup_address_thumb(address), cycles);
 }
 
-void function_cc sh4_execute_store_u32(u32 address, u32 value) {
- address &= ~0x3;
- reg[REG_PC] = address;
- if (!(address & 0xF0000000)) {
- u32 page = address >> 15;
- u8* map = memory_map_write[page];
- if (map) {
- u32 offset = address & 0x7FFF;
- *(u32*)(map + offset) = value;
- if (*(u32*)(map + offset - 32768) != 0) {
- flush_translation_cache_ram();
- goto lookup_pc;
- }
- return;
- }
- }
- cpu_alert_type result = write_memory32(address, value);
- if (result != CPU_ALERT_NONE) {
- collapse_flags();
- if (result == CPU_ALERT_SMC) {
- flush_translation_cache_ram();
- goto lookup_pc;
- }
- do {
- result = update_gba();
- } while (reg[CPU_HALT_STATE] != 0);
- goto lookup_pc;
- }
- return;
-
-lookup_pc:
- reg[CHANGED_PC_STATUS] = 0;
- address = reg[REG_PC];
- if (reg[REG_CPSR] & 0x20) {
- ((void (*)())block_lookup_address_thumb(address))();
- } else {
- ((void (*)())block_lookup_address_arm(address))();
- }
+void sh4_indirect_branch_dual(u32 address, u32 cycles)
+{
+  sh4_dispatch_block(block_lookup_address_dual(address), cycles);
 }
 
-void translate_invalidate_dcache() {
-    icache_flush_range((uint32)ram_translation_cache, 
-                       (uint32)(ram_translation_ptr - ram_translation_cache) + 0x100);
-}
+void function_cc execute_store_u8(u32 address, u32 value, u32 pc, u32 cycles)
+{
+  reg[REG_PC] = pc;
 
-void sh4_invalidate_icache_region(u32 addr, u32 size) {
-    icache_flush_range(addr, size);
-}
+  if(!(address & 0xF0000000))
+  {
+    u32 page = address >> 15;
+    u8 *map = memory_map_write[page];
 
-u32 function_cc sh4_execute_arm_translate(u32 cycles) {
-    extract_flags();
-    u32 pc = reg[REG_PC];
-    u8* target = block_lookup_address_arm(pc);
-    if (target != NULL) {
-        printf("Dynarec ARM: Executing block at %p for PC %08x\n", target, pc);
-        ((void (*)())target)();
-    } else {
-        printf("Dynarec ARM: Fallback at PC %08x\n", pc);
-        // Add fallback interpreter call here if it exists
+    if(map)
+    {
+      u32 offset = address & 0x7FFF;
+      map[offset] = (u8)value;
+
+      if(map[offset - 32768] != 0)
+      {
+        flush_translation_cache_ram();
+        sh4_lookup_pc(cycles);
+      }
+
+      return;
     }
-    return cycles;
-}
-u32 function_cc sh4_execute_thumb_translate(u32 cycles) {
-    extract_flags();
-    u32 pc = reg[REG_PC];
-    u8* target = block_lookup_address_thumb(pc);
-    if (target != NULL) {
-        printf("Dynarec Thumb: Executing block at %p for PC %08x\n", target, pc);
-        ((void (*)())target)();
-    } else {
-        printf("Dynarec Thumb: Fallback at PC %08x\n", pc);
-        // Add fallback interpreter call here if it exists
+  }
+
+  {
+    cpu_alert_type result;
+
+    /* Collapse before the write: an IO write can complete a DMA whose
+       raise_interrupt() snapshots reg[REG_CPSR] into SPSR_irq, and the IRQ
+       handler's return restores flags from that snapshot. */
+    collapse_flags();
+    result = write_memory8(address, (u8)value);
+
+    if(result != CPU_ALERT_NONE)
+    {
+      if(result == CPU_ALERT_SMC)
+      {
+        flush_translation_cache_ram();
+        sh4_lookup_pc(cycles);
+      }
+
+      if(result == CPU_ALERT_IRQ)
+      {
+        /* raise_interrupt() already redirected the PC; running update_gba()
+           here would bill the rest of the current video/timer period before
+           it elapsed (MIPS stub parity: irq_alert). */
+        sh4_lookup_pc(cycles);
+      }
+
+      /* CPU_ALERT_HALT: sleep until an event wakes the CPU. */
+      do
+      {
+        cycles = update_gba();
+      }
+      while(reg[CPU_HALT_STATE] != 0);
+
+      sh4_lookup_pc(cycles);
     }
-    return cycles;
+  }
+
+  return;
 }
 
+void function_cc execute_store_u16(u32 address, u32 value, u32 pc, u32 cycles)
+{
+  address &= ~0x1;
+  reg[REG_PC] = pc;
 
-void sh4_step_debug(u32 pc) {
- collapse_flags();
- step_debug(pc, reg[REG_CYCLES]);
+  if(!(address & 0xF0000000))
+  {
+    u32 page = address >> 15;
+    u8 *map = memory_map_write[page];
+
+    if(map)
+    {
+      u32 offset = address & 0x7FFF;
+      *(u16 *)(map + offset) = (u16)value;
+
+      if(*(u16 *)(map + offset - 32768) != 0)
+      {
+        flush_translation_cache_ram();
+        sh4_lookup_pc(cycles);
+      }
+
+      return;
+    }
+  }
+
+  {
+    cpu_alert_type result;
+
+    /* See execute_store_u8 for the collapse/IRQ-dispatch rationale. */
+    collapse_flags();
+    result = write_memory16(address, (u16)value);
+
+    if(result != CPU_ALERT_NONE)
+    {
+      if(result == CPU_ALERT_SMC)
+      {
+        flush_translation_cache_ram();
+        sh4_lookup_pc(cycles);
+      }
+
+      if(result == CPU_ALERT_IRQ)
+        sh4_lookup_pc(cycles);
+
+      do
+      {
+        cycles = update_gba();
+      }
+      while(reg[CPU_HALT_STATE] != 0);
+
+      sh4_lookup_pc(cycles);
+    }
+  }
+
+  return;
+}
+
+void function_cc execute_store_u32(u32 address, u32 value, u32 pc, u32 cycles)
+{
+  address &= ~0x3;
+  reg[REG_PC] = pc;
+
+  if(!(address & 0xF0000000))
+  {
+    u32 page = address >> 15;
+    u8 *map = memory_map_write[page];
+
+    if(map)
+    {
+      u32 offset = address & 0x7FFF;
+      *(u32 *)(map + offset) = value;
+
+      if(*(u32 *)(map + offset - 32768) != 0)
+      {
+        flush_translation_cache_ram();
+        sh4_lookup_pc(cycles);
+      }
+
+      return;
+    }
+  }
+
+  {
+    cpu_alert_type result;
+
+    /* See execute_store_u8 for the collapse/IRQ-dispatch rationale. */
+    collapse_flags();
+    result = write_memory32(address, value);
+
+    if(result != CPU_ALERT_NONE)
+    {
+      if(result == CPU_ALERT_SMC)
+      {
+        flush_translation_cache_ram();
+        sh4_lookup_pc(cycles);
+      }
+
+      if(result == CPU_ALERT_IRQ)
+        sh4_lookup_pc(cycles);
+
+      do
+      {
+        cycles = update_gba();
+      }
+      while(reg[CPU_HALT_STATE] != 0);
+
+      sh4_lookup_pc(cycles);
+    }
+  }
+
+  return;
+}
+
+void sh4_invalidate_icache_region(u32 addr, u32 size)
+{
+  /* Freshly emitted code is written through the operand cache; it must be
+     written back to RAM before the instruction cache refetches the range. */
+  dcache_flush_range(addr, size);
+  icache_flush_range(addr, size);
+}
+
+u32 function_cc execute_arm_translate(u32 cycles)
+{
+  u8 *target;
+  u32 pc = reg[REG_PC];
+
+  extract_flags_local();
+  target = block_lookup_address_arm(pc);
+
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  printf("[gbaDC trace] execute dynarec enter pc=%08x target=%p cycles=%u cpsr=%08x\n",
+   pc, target, cycles, reg[REG_CPSR]);
+  sh4_trace_block_words(pc, target, cycles);
+#endif
+
+  if(target == NULL)
+  {
+    char buffer[64];
+    sprintf(buffer, "null translation at %08x", pc);
+    gpsp_dynarec_fatal_error(buffer);
+    return cycles;
+  }
+
+  /* Record the stack base every block (re-)entry resets to; translated
+     code never returns here. */
+  __asm__ __volatile__("mov r15, %0" : "=r" (sh4_dispatch_stack));
+  sh4_dispatch_block(target, cycles);
+}
+
+void sh4_step_debug(u32 pc, u32 cycles)
+{
+  collapse_flags();
+  step_debug(pc, cycles);
+}
+
+void sh4_trace_swi(u32 swi_number, u32 pc, u32 thumb)
+{
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  sh4_trace_last_swi = swi_number;
+  sh4_trace_last_swi_pc = pc;
+  sh4_trace_last_swi_thumb = thumb;
+#else
+  (void)swi_number;
+  (void)pc;
+  (void)thumb;
+#endif
+}
+
+void sh4_trace_emit_update_pc(u32 new_pc, u32 source_pc, u32 opcode)
+{
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  sh4_trace_last_emit_pc = new_pc;
+  sh4_trace_last_emit_source_pc = source_pc;
+  sh4_trace_last_emit_opcode = opcode;
+  sh4_trace_emit_count++;
+#else
+  (void)new_pc;
+  (void)source_pc;
+  (void)opcode;
+#endif
+}
+
+void sh4_cheat_hook(void)
+{
+  process_cheats();
 }

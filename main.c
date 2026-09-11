@@ -21,6 +21,8 @@
 #include "sound.h"
 #include "cpu.h"
 #include "video.h"
+#include "memory.h"
+#include "input.h"
 #ifdef PSP_BUILD
 
 //PSP_MODULE_INFO("gpSP", 0x1000, 0, 6);
@@ -152,15 +154,242 @@ void init_main()
   flush_translation_cache_bios();
 }
 
-int main(int argc, char *argv[])
+#if defined(_arch_dreamcast)
+#ifdef GPSP_DC_BOOT_TRACE
+#include <dc/video.h>
+#include <dc/biosfont.h>
+
+static u32 gpsp_boot_trace_y = 24;
+
+static void gpsp_boot_trace(const char *message)
+{
+  if(gpsp_boot_trace_y == 24)
+  {
+    vid_init(DM_640x480, PM_RGB565);
+    memset(vram_s, 0, 640 * 480 * 2);
+  }
+
+  bfont_draw_str(vram_s + (gpsp_boot_trace_y * 640) + 24, 640, 0,
+   (char *)message);
+  gpsp_boot_trace_y += 28;
+}
+#else
+#define gpsp_boot_trace(message) ((void)0)
+#endif
+
+#ifdef GPSP_DC_RUNTIME_TRACE
+#define GPSP_DC_TRACE_EVERY(counter, fmt, ...)                                \
+  do                                                                          \
+  {                                                                           \
+    (counter)++;                                                              \
+    if(((counter) & 63) == 1)                                                 \
+      printf("[gbaDC trace] " fmt "\n", ##__VA_ARGS__);                     \
+  } while(0)
+
+static u32 gpsp_dc_debug_vram_checksum(void)
+{
+  u32 h = 2166136261u;
+  u32 i;
+  const u16 *vram16 = (const u16 *)vram;
+
+  for(i = 0; i < (96 * 1024) / 2; i += 97)
+  {
+    h ^= vram16[i];
+    h *= 16777619u;
+  }
+
+  return h;
+}
+
+static void gpsp_dc_trace_vram_dirty(void)
+{
+  static u32 last_vram_hash;
+  u32 now = gpsp_dc_debug_vram_checksum();
+
+  if(now != last_vram_hash)
+  {
+    printf("[gbaDC trace] VRAM changed %08x -> %08x\n",
+     last_vram_hash, now);
+    last_vram_hash = now;
+  }
+}
+
+static void gpsp_dc_trace_loaded_rom(const char *stage)
+{
+  char title[13];
+  u32 i;
+
+  memset(title, 0, sizeof(title));
+  if(gamepak_rom != NULL && gamepak_size >= 0xAC)
+  {
+    memcpy(title, gamepak_rom + 0xA0, 12);
+    for(i = 0; i < 12; i++)
+    {
+      if(title[i] < 0x20 || title[i] > 0x7E)
+        title[i] = '.';
+    }
+  }
+
+  printf("[gbaDC trace] %s ROM title: %.12s size=%u\n", stage, title,
+   gamepak_size);
+  printf("[gbaDC trace] %s reset PC=%08x CPSR=%08x mode=%u halt=%u\n",
+   stage, reg[REG_PC], reg[REG_CPSR], reg[CPU_MODE], reg[CPU_HALT_STATE]);
+}
+#else
+#define GPSP_DC_TRACE_EVERY(counter, fmt, ...) ((void)(counter))
+#define gpsp_dc_trace_vram_dirty() ((void)0)
+#define gpsp_dc_trace_loaded_rom(stage) ((void)0)
+#endif
+
+static void gpsp_fatal_error_screen(const char **lines, u32 line_count)
 {
   u32 i;
-  u32 vcount = 0;
-  u32 ticks;
-  u32 dispstat;
+  gui_action_type gui_action;
+
+  for(i = 0; i < line_count; i++)
+    printf("%s\n", lines[i]);
+
+  init_video();
+  init_input();
+  video_resolution_large();
+  clear_screen(0x0000);
+  for(i = 0; i < line_count; i++)
+    print_string(lines[i], 0xFFFF, 0x0000, 10, 10 + (i * 10));
+  flip_screen();
+
+  gui_action = CURSOR_NONE;
+  while(gui_action == CURSOR_NONE)
+  {
+    gui_action = get_gui_input();
+    delay_us(15000);
+  }
+
+  SDL_Quit();
+  exit(1);
+}
+
+static void gpsp_missing_bios_error(void)
+{
+  static const char *lines[] =
+  {
+    "gPSPDC requires a GBA BIOS image.",
+    "Place gba_bios.bin at /cd/gba_bios.bin",
+    "Size: 16384 bytes",
+    "MD5: a860e8c0b6d573d191e4ec7db1b1e4f6",
+    "Press Start to exit."
+  };
+
+  gpsp_fatal_error_screen(lines, 5);
+}
+
+static void gpsp_no_memory_error(void)
+{
+  static const char *lines[] =
+  {
+    "gPSPDC could not allocate ROM buffer.",
+    "Not enough system RAM is available.",
+    "Press Start to exit."
+  };
+
+  gpsp_fatal_error_screen(lines, 3);
+}
+
+void gpsp_gamepak_load_error(const char *filename)
+{
+  static const char *prefix = "Could not load game ROM:";
+  static const char *suffix = "Press Start to exit.";
+  char detail[512];
+  const char *lines[3];
+
+  snprintf(detail, sizeof(detail), "%s",
+   filename ? filename : "(unknown file)");
+  lines[0] = prefix;
+  lines[1] = detail;
+  lines[2] = suffix;
+  gpsp_fatal_error_screen(lines, 3);
+}
+
+void gpsp_video_init_error(const char *sdl_error)
+{
+  printf("gPSPDC could not initialize video.\n");
+
+  if(sdl_error && sdl_error[0])
+    printf("%s\n", sdl_error);
+
+  printf("Press Start to exit.\n");
+  exit(1);
+}
+
+void gpsp_audio_init_error(const char *sdl_error)
+{
+  static const char *prefix = "gPSPDC could not initialize audio.";
+  static const char *suffix = "Press Start to exit.";
+  char detail[512];
+  const char *lines[3];
+
+  if(sdl_error && sdl_error[0])
+    snprintf(detail, sizeof(detail), "%s", sdl_error);
+  else
+    snprintf(detail, sizeof(detail), "Unknown SDL audio error.");
+
+  lines[0] = prefix;
+  lines[1] = detail;
+  lines[2] = suffix;
+  gpsp_fatal_error_screen(lines, 3);
+}
+
+void gpsp_dynarec_fatal_error(const char *detail)
+{
+  static const char *prefix = "Dynarec translation failed:";
+  static const char *suffix = "Press Start to exit.";
+  const char *lines[3];
+
+  lines[0] = prefix;
+  lines[1] = detail;
+  lines[2] = suffix;
+  gpsp_fatal_error_screen(lines, 3);
+}
+
+static s32 gpsp_load_autoload_filename(u8 *load_filename,
+ u32 load_filename_size)
+{
+  u32 i;
+  file_open(autoload_file, "/cd/gbaDC/autoload.txt", read);
+
+  if(!file_check_valid(autoload_file))
+    return -1;
+
+  if(fgets((char *)load_filename, load_filename_size, autoload_file) == NULL)
+  {
+    file_close(autoload_file);
+    return -1;
+  }
+
+  file_close(autoload_file);
+
+  for(i = 0; i < load_filename_size && load_filename[i] != 0; i++)
+  {
+    if(load_filename[i] == '\r' || load_filename[i] == '\n')
+    {
+      load_filename[i] = 0;
+      break;
+    }
+  }
+
+  if(load_filename[0] == 0)
+    return -1;
+
+  return 0;
+}
+#endif
+
+int main(int argc, char *argv[])
+{
   u8 load_filename[512];
 #ifdef _arch_dreamcast
+  gpsp_boot_trace("gPSPDC boot: entering main");
   fs_chdir("/cd/gbaDC/");
+  gpsp_boot_trace("gPSPDC boot: fs_chdir /cd/gbaDC complete");
 #endif
 
 #ifdef PSP_BUILD
@@ -170,20 +399,27 @@ int main(int argc, char *argv[])
 #else
   //freopen("CON", "wb", stdout);
 #endif
-printf("init_gamepak_buffer...\n");
+  gpsp_debug_printf("init_gamepak_buffer...\n");
+  gpsp_boot_trace("gPSPDC boot: init_gamepak_buffer");
   init_gamepak_buffer();
+#ifdef _arch_dreamcast
+  if(gamepak_rom == NULL)
+    gpsp_no_memory_error();
+#endif
 
   // Copy the directory path of the executable into main_path
 #ifndef _arch_dreamcast
-  getcwd(main_path);
+  getcwd(main_path, sizeof(main_path));
 #else
   getcwd(main_path,512);
 #endif
-printf("load_config_file...\n");
+  gpsp_debug_printf("load_config_file...\n");
+  gpsp_boot_trace("gPSPDC boot: load_config_file");
   load_config_file();
 
   gamepak_filename[0] = 0;
-printf("load_bios...\n");
+  gpsp_debug_printf("load_bios...\n");
+  gpsp_boot_trace("gPSPDC boot: load_bios");
   if(load_bios("/cd/gba_bios.bin") == -1)
   {
 #ifdef PSP_BUILD
@@ -208,73 +444,127 @@ printf("load_bios...\n");
     }
 
     quit();
+#elif defined(_arch_dreamcast)
+    gpsp_missing_bios_error();
 #else
-printf("Sorry, but gpSP requires a Gameboy Advance BIOS image to run\n");
-quit();
+    printf("Sorry, but gpSP requires a Gameboy Advance BIOS image to run\n");
+    exit(1);
 #endif
   }
 
 #ifdef PSP_BUILD
   delay_us(2500000);
 #endif
-printf("Initialize...\ninit_main\n");
+  gpsp_debug_printf("Initialize...\ninit_main\n");
+  gpsp_boot_trace("gPSPDC boot: init_main");
   init_main();
-  printf("init_sound\n");
+  gpsp_debug_printf("init_sound\n");
+  gpsp_boot_trace("gPSPDC boot: init_sound");
   init_sound();
-printf("init_video\n");
+  gpsp_debug_printf("init_video\n");
+  gpsp_boot_trace("gPSPDC boot: init_video");
   init_video();
-printf("init_input\n");
+  gpsp_debug_printf("init_input\n");
+  gpsp_boot_trace("gPSPDC boot: init_input");
   init_input();
-printf("video_resolution_large\n");
+  gpsp_debug_printf("video_resolution_large\n");
+  gpsp_boot_trace("gPSPDC boot: video_resolution_large");
   video_resolution_large();
-printf("Loading files...\n");
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  gpsp_dc_debug_video_test_pattern();
+#endif
+  gpsp_debug_printf("Loading files...\n");
+  gpsp_boot_trace("gPSPDC boot: load_file/menu");
   if(argc > 1)
   {
     if(load_gamepak(argv[1]) == -1)
     {
-      printf("Failed to load gamepak %s, exiting.\n", load_filename);
+#ifdef _arch_dreamcast
+      gpsp_gamepak_load_error(argv[1]);
+#else
+      printf("Failed to load gamepak %s, exiting.\n", argv[1]);
       exit(-1);
+#endif
     }
 
     set_gba_resolution(screen_scale);
+#ifndef _arch_dreamcast
     video_resolution_small();
+#endif
 
     init_cpu();
     init_memory();
+    gpsp_dc_trace_loaded_rom("argv load");
   }
   else
   {
 
+#ifdef _arch_dreamcast
+    if(gpsp_load_autoload_filename(load_filename, sizeof(load_filename)) == 0)
+    {
+      gpsp_boot_trace("gPSPDC boot: autoload load_gamepak");
+      if(load_gamepak((char *)load_filename) == -1)
+        gpsp_gamepak_load_error((char *)load_filename);
+
+      gpsp_boot_trace("gPSPDC boot: autoload set resolution");
+      set_gba_resolution(screen_scale);
+      gpsp_boot_trace("gPSPDC boot: autoload init_cpu");
+      init_cpu();
+      gpsp_boot_trace("gPSPDC boot: autoload init_memory");
+      init_memory();
+      gpsp_dc_trace_loaded_rom("autoload");
+    }
+    else
+#endif
     if(load_file(file_ext, load_filename) == -1)
     {
-      printf("Loading menu...\n");
-      menu(copy_screen());
+      gpsp_debug_printf("Loading menu...\n");
+      {
+        u16 *screen_copy = copy_screen();
+
+        if(screen_copy == NULL)
+          quit();
+
+        menu(screen_copy);
+        free(screen_copy);
+      }
     }
     else
     {
       if(load_gamepak(load_filename) == -1)
       {
+#ifdef _arch_dreamcast
+        gpsp_gamepak_load_error((char *)load_filename);
+#else
         printf("Failed to load gamepak %s, exiting.\n", load_filename);
         delay_us(5000000);
         exit(-1);
+#endif
       }
 
       set_gba_resolution(screen_scale);
+#ifndef _arch_dreamcast
       video_resolution_small();
+#endif
 
       init_cpu();
       init_memory();
+      gpsp_dc_trace_loaded_rom("menu load");
     }
   }
 
   last_frame = 0;
 
+  if(gamepak_filename[0] == 0)
+    quit();
+
   // We'll never actually return from here.
 
-#ifdef PSP_BUILD
+#if defined(PSP_BUILD) || (defined(_arch_dreamcast) && !defined(GPSP_DC_INTERPRETER))
+  gpsp_boot_trace("gPSPDC boot: execute dynarec");
   execute_arm_translate(execute_cycles);
 #else
-//  execute_arm_translate(execute_cycles);
+  gpsp_boot_trace("gPSPDC boot: execute interpreter");
   execute_arm(execute_cycles);
 #endif
   return 0;
@@ -302,8 +592,15 @@ void print_memory_stats(u32 *counter, u32 *region_stats, u8 *stats_str)
 
 u32 update_gba()
 {
+  static u32 trace_update_gba;
   irq_type irq_raised = IRQ_NONE;
   cpu_ticks += execute_cycles;
+
+  GPSP_DC_TRACE_EVERY(trace_update_gba,
+   "update_gba #%u pc=%08x cpsr=%08x execute=%u video=%u frame=%u vcount=%u",
+   trace_update_gba, reg[REG_PC], reg[REG_CPSR], execute_cycles,
+   video_count, frame_ticks, io_registers[REG_VCOUNT]);
+  gpsp_dc_trace_vram_dirty();
 
   if(gbc_sound_update)
   {
@@ -419,12 +716,26 @@ u32 update_gba()
         flush_ram_count = 0;
 #endif
 
-        if(update_input())
-          return execute_cycles;
+        {
+          static u32 trace_update_input;
+          static u32 trace_update_screen;
 
-        update_gbc_sound(cpu_ticks);
-        synchronize();
-        update_screen();
+          GPSP_DC_TRACE_EVERY(trace_update_input,
+           "update_input #%u pc=%08x frame=%u", trace_update_input,
+           reg[REG_PC], frame_ticks);
+
+          if(update_input())
+            return execute_cycles;
+
+          update_gbc_sound(cpu_ticks);
+          synchronize();
+
+          GPSP_DC_TRACE_EVERY(trace_update_screen,
+           "update_screen #%u pc=%08x skip=%u", trace_update_screen,
+           reg[REG_PC], skip_next_frame);
+          update_screen();
+        }
+
         if(update_backup_flag)
           update_backup();
 
@@ -624,6 +935,7 @@ void quit()
   if(!update_backup_flag)
     update_backup_force();
 
+  gpsp_finish_save_notice();
   sound_exit();
 
 #ifdef PSP_BUILD

@@ -21,8 +21,13 @@
 #include "memory.h"
 #include "zip.h"
 
-u8 bios_rom[1024 * 32];
-u32 bios_read_protect;
+#ifdef _arch_dreamcast
+void gpsp_gamepak_load_error(const char *filename);
+#endif
+
+#define GAMEPAK_SWAP_PAGE_SIZE      (32 * 1024)
+#define GAMEPAK_SWAP_PAGE_SHIFT     15
+#define GAMEPAK_ROM_MAP_BASE_INDEX  (0x08000000 >> GAMEPAK_SWAP_PAGE_SHIFT)
 
 u8 *memory_map_read[8 * 1024];
 u32 reg[64];
@@ -1872,8 +1877,18 @@ u32 load_backup(char *name)
   if(file_check_valid(backup_file))
   {
     u32 backup_size = file_length(name, backup_file);
+    u32 backup_cap = sizeof(gamepak_backup);
 
-    file_read(backup_file, gamepak_backup, backup_size);
+    if(backup_size > backup_cap)
+      backup_size = backup_cap;
+
+    if(!file_read_ok(backup_file, gamepak_backup, backup_size))
+    {
+      file_close(backup_file);
+      memset(gamepak_backup, 0xFF, backup_cap);
+      return (u32)-1;
+    }
+
     file_close(backup_file);
 
     // The size might give away what kind of backup it is.
@@ -1950,30 +1965,65 @@ u32 save_backup(char *name)
           break;
       }
 
-      file_write(backup_file, gamepak_backup, backup_size);
-      file_close(backup_file);
-      return 1;
+      s32 valid = file_write_ok(backup_file, gamepak_backup, backup_size);
+      if(file_close(backup_file) != 0)
+        valid = 0;
+      return valid;
     }
   }
 
   return 0;
 }
 
+/* Back off independently of the dirty countdown, which game writes reset. */
+static u32 backup_retry_frames;
+static u32 backup_failure_reported;
+
 void update_backup()
 {
-  if(backup_update != (write_backup_delay + 1))
+  if(backup_update == write_backup_delay + 1)
+    return;
+  if(backup_update > 0)
     backup_update--;
-
+  if(backup_retry_frames > 0)
+  {
+    backup_retry_frames--;
+    return;
+  }
   if(backup_update == 0)
   {
-    save_backup(backup_filename);
-    backup_update = write_backup_delay + 1;
+    if(backup_type == BACKUP_NONE || save_backup(backup_filename))
+    {
+      backup_update = write_backup_delay + 1;
+      backup_failure_reported = 0;
+    }
+    else
+    {
+      backup_retry_frames = 300;
+      if(!backup_failure_reported)
+        gpsp_save_error("Game backup", (char *)backup_filename);
+      backup_failure_reported = 1;
+    }
   }
 }
 
 void update_backup_force()
 {
-  save_backup(backup_filename);
+  if(backup_type == BACKUP_NONE)
+    return;
+  if(save_backup(backup_filename))
+  {
+    backup_update = write_backup_delay + 1;
+    backup_retry_frames = 0;
+    backup_failure_reported = 0;
+  }
+  else
+  {
+    backup_update = 0;
+    backup_retry_frames = 300;
+    gpsp_save_error("Game backup", (char *)backup_filename);
+    backup_failure_reported = 1;
+  }
 }
 
 #define CONFIG_FILENAME "game_config.txt"
@@ -2039,9 +2089,8 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
 
 #ifdef PSP_BUILD
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
-#elif _arch_dreamcast
+#elif defined(_arch_dreamcast)
   sprintf(config_path, "%s/%s", main_path, CONFIG_FILENAME);
-  printf("config_path: %s\n", config_path);
 #else
   sprintf(config_path, "%s\\%s", main_path, CONFIG_FILENAME);
 #endif
@@ -2058,7 +2107,6 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
         if(strcmp(current_variable, "game_name") ||
          strcmp(current_value, gamepak_title))
           continue;
-        printf("game_name: %s\n", current_value);
         if(!fgets(current_line, 256, config_file) ||
          (parse_config_line(current_line, current_variable,
            current_value) == -1) ||
@@ -2136,14 +2184,18 @@ s32 load_game_config(u8 *gamepak_title, u8 *gamepak_code, u8 *gamepak_maker)
 
 s32 load_gamepak_raw(char *name)
 {
-	char newname[100];
-	sprintf(newname,"/cd/gbaDC/%s",name);
-	fprintf(stderr,"loading %s\n",newname);
-  file_open(gamepak_file, newname, read);
+#ifdef _arch_dreamcast
+  char open_path[512];
+
+  snprintf(open_path, sizeof(open_path), "/cd/gbaDC/%s", name);
+#else
+  char *open_path = name;
+#endif
+  file_open(gamepak_file, open_path, read);
 
   if(file_check_valid(gamepak_file))
   {
-    u32 gamepak_size = file_length(name, gamepak_file);
+    u32 gamepak_size = file_length(open_path, gamepak_file);
 
     // First, close the last one if it was open, we won't
     // be needing it anymore.
@@ -2154,7 +2206,12 @@ s32 load_gamepak_raw(char *name)
     // probably want to load it later
     if(gamepak_size <= gamepak_ram_buffer_size)
     {
-      file_read(gamepak_file, gamepak_rom, gamepak_size);
+      if(!file_read_ok(gamepak_file, gamepak_rom, gamepak_size))
+      {
+        file_close(gamepak_file);
+        return -1;
+      }
+
       file_close(gamepak_file);
 
 #ifdef PSP_BUILD
@@ -2166,7 +2223,12 @@ s32 load_gamepak_raw(char *name)
     else
     {
       // Read in just enough for the header
-      file_read(gamepak_file, gamepak_rom, 0x100);
+      if(!file_read_ok(gamepak_file, gamepak_rom, 0x100))
+      {
+        file_close(gamepak_file);
+        return -1;
+      }
+
       gamepak_file_large = gamepak_file;
     }
 
@@ -2187,7 +2249,7 @@ u32 load_gamepak(char *name)
   s32 file_size;
   u8 cheats_filename[256];
 
-  if(!strcmp(dot_position, ".zip"))
+  if(dot_position && !strcmp(dot_position, ".zip"))
     file_size = load_file_zip(name);
   else
     file_size = load_gamepak_raw(name);
@@ -2201,6 +2263,9 @@ u32 load_gamepak(char *name)
     change_ext(gamepak_filename, backup_filename, ".sav");
 
     load_backup(backup_filename);
+    backup_retry_frames = 0;
+    backup_failure_reported = 0;
+    backup_update = write_backup_delay + 1;
 
     memcpy(gamepak_title, gamepak_rom + 0xA0, 12);
     memcpy(gamepak_code, gamepak_rom + 0xAC, 4);
@@ -2213,7 +2278,6 @@ u32 load_gamepak(char *name)
     load_game_config_file();
 
     change_ext(gamepak_filename, cheats_filename, ".cht");
-    printf("cheats_filename: %s\n", cheats_filename);
     add_cheats(cheats_filename);
 
     return 0;
@@ -2301,7 +2365,7 @@ dma_region_type dma_region_map[16] =
 #define dma_adjust_ptr_reload()                                               \
 
 #define dma_print(src_op, dest_op, transfer_size, wb)                         \
-  printf("dma from %x (%s) to %x (%s) for %x (%s) (%s) (%d) (pc %x)\n",       \
+  gpsp_debug_printf("dma from %x (%s) to %x (%s) for %x (%s) (%s) (%d) (pc %x)\n", \
    src_ptr, #src_op, dest_ptr, #dest_op, length, #transfer_size, #wb,         \
    dma->irq, reg[15]);                                                        \
 
@@ -2889,6 +2953,47 @@ cpu_alert_type gpsp_dma_transfer(dma_transfer_type *dma)
 // Picks a page to evict
 u32 page_time = 0;
 
+static void unmap_gamepak_physical_page(u32 physical_index)
+{
+  memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] = NULL;
+  memory_map_read[(0x0A000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = NULL;
+  memory_map_read[(0x0C000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = NULL;
+}
+
+static u8 gamepak_physical_page_is_mapped(u32 physical_index)
+{
+  if(physical_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
+    return 1;
+
+  return memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] != NULL;
+}
+
+static void map_gamepak_physical_page(u32 physical_index, u32 page_index)
+{
+  u32 page_offset = page_index * GAMEPAK_SWAP_PAGE_SIZE;
+  u8 *swap_location = gamepak_rom + page_offset;
+
+  gamepak_memory_map[page_index].page_timestamp = page_time;
+  gamepak_memory_map[page_index].physical_index = physical_index;
+  page_time++;
+
+  if(file_seek(gamepak_file_large, physical_index * GAMEPAK_SWAP_PAGE_SIZE,
+   SEEK_SET) != 0 ||
+   !file_read_ok(gamepak_file_large, swap_location, GAMEPAK_SWAP_PAGE_SIZE))
+  {
+    memset(swap_location, 0, GAMEPAK_SWAP_PAGE_SIZE);
+  }
+  memory_map_read[GAMEPAK_ROM_MAP_BASE_INDEX + physical_index] = swap_location;
+  memory_map_read[(0x0A000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = swap_location;
+  memory_map_read[(0x0C000000 >> GAMEPAK_SWAP_PAGE_SHIFT) + physical_index] = swap_location;
+
+  // If RTC is active page the RTC register bytes so they can be read
+  if((rtc_state != RTC_DISABLED) && (physical_index == 0))
+  {
+    memcpy(swap_location + 0xC4, rtc_registers, sizeof(rtc_registers));
+  }
+}
+
 u32 evict_gamepak_page()
 {
   // Find the one with the smallest frame timestamp
@@ -2907,40 +3012,68 @@ u32 evict_gamepak_page()
   }
 
   physical_index = gamepak_memory_map[page_index].physical_index;
-
-  memory_map_read[(0x8000000 / (32 * 1024)) + physical_index] = NULL;
-  memory_map_read[(0xA000000 / (32 * 1024)) + physical_index] = NULL;
-  memory_map_read[(0xC000000 / (32 * 1024)) + physical_index] = NULL;
+  unmap_gamepak_physical_page(physical_index);
 
   return page_index;
 }
 
+static u32 evict_gamepak_page_except(u32 except_page_index)
+{
+  u32 page_index = except_page_index;
+  u32 smallest = 0xFFFFFFFF;
+  u32 i;
+
+  if(gamepak_ram_pages <= 1)
+    return evict_gamepak_page();
+
+  for(i = 0; i < gamepak_ram_pages; i++)
+  {
+    if(i == except_page_index)
+      continue;
+
+    if(gamepak_memory_map[i].page_timestamp < smallest)
+    {
+      smallest = gamepak_memory_map[i].page_timestamp;
+      page_index = i;
+    }
+  }
+
+  if(page_index == except_page_index)
+    return evict_gamepak_page();
+
+  unmap_gamepak_physical_page(gamepak_memory_map[page_index].physical_index);
+
+  return page_index;
+}
+
+static void prefetch_adjacent_gamepak_page(u32 physical_index, u32 loaded_page_index)
+{
+  u32 next_index = physical_index + 1;
+
+  if(gamepak_ram_pages < 2)
+    return;
+
+  if(next_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
+    return;
+
+  if(gamepak_physical_page_is_mapped(next_index))
+    return;
+
+  map_gamepak_physical_page(next_index,
+   evict_gamepak_page_except(loaded_page_index));
+}
+
 u8 *load_gamepak_page(u32 physical_index)
 {
-  if(physical_index >= (gamepak_size >> 15))
+  if(physical_index >= (gamepak_size >> GAMEPAK_SWAP_PAGE_SHIFT))
     return gamepak_rom;
 
   u32 page_index = evict_gamepak_page();
-  u32 page_offset = page_index * (32 * 1024);
-  u8 *swap_location = gamepak_rom + page_offset;
 
-  gamepak_memory_map[page_index].page_timestamp = page_time;
-  gamepak_memory_map[page_index].physical_index = physical_index;
-  page_time++;
+  map_gamepak_physical_page(physical_index, page_index);
+  prefetch_adjacent_gamepak_page(physical_index, page_index);
 
-  file_seek(gamepak_file_large, physical_index * (32 * 1024), SEEK_SET);
-  file_read(gamepak_file_large, swap_location, (32 * 1024));
-  memory_map_read[(0x8000000 / (32 * 1024)) + physical_index] = swap_location;
-  memory_map_read[(0xA000000 / (32 * 1024)) + physical_index] = swap_location;
-  memory_map_read[(0xC000000 / (32 * 1024)) + physical_index] = swap_location;
-
-  // If RTC is active page the RTC register bytes so they can be read
-  if((rtc_state != RTC_DISABLED) && (physical_index == 0))
-  {
-    memcpy(swap_location + 0xC4, rtc_registers, sizeof(rtc_registers));
-  }
-
-  return swap_location;
+  return gamepak_rom + page_index * GAMEPAK_SWAP_PAGE_SIZE;
 }
 
 void init_memory_gamepak()
@@ -2950,7 +3083,7 @@ void init_memory_gamepak()
   if(gamepak_size > gamepak_ram_buffer_size)
   {
     // Large ROMs get special treatment because they
-    // can't fit into the 16MB ROM buffer.
+    // can't fit into the resident ROM buffer.
     u32 i;
     for(i = 0; i < gamepak_ram_pages; i++)
     {
@@ -2971,41 +3104,63 @@ void init_memory_gamepak()
   }
 }
 
+static u32 try_gamepak_buffer_alloc(u32 size)
+{
+  gamepak_ram_buffer_size = size;
+  gamepak_rom = malloc(size);
+  return (gamepak_rom != NULL);
+}
+
 void init_gamepak_buffer()
 {
-  // Try to initialize 32MB (this is mainly for non-PSP platforms)
   gamepak_rom = NULL;
-#ifndef _arch_dreamcast
-  gamepak_ram_buffer_size = 32 * 1024 * 1024;
-  gamepak_rom = malloc(gamepak_ram_buffer_size);
+  gamepak_memory_map = NULL;
+  gamepak_ram_pages = 0;
 
-  if(gamepak_rom == NULL)
+#ifdef _arch_dreamcast
   {
-    // Try 16MB, for PSP, then lower in 2MB increments
-    gamepak_ram_buffer_size = 16 * 1024 * 1024;
-    gamepak_rom = malloc(gamepak_ram_buffer_size);
-
-    while(gamepak_rom == NULL)
+    static const u32 dc_buffer_sizes[] =
     {
-      gamepak_ram_buffer_size -= (2 * 1024 * 1024);
-      gamepak_rom = malloc(gamepak_ram_buffer_size);
+      4 * 1024 * 1024,
+      0
+    };
+    u32 i;
+
+    for(i = 0; dc_buffer_sizes[i] != 0; i++)
+    {
+      if(try_gamepak_buffer_alloc(dc_buffer_sizes[i]))
+        break;
     }
+
+    if(gamepak_rom == NULL)
+      return;
   }
 #else
-      gamepak_ram_buffer_size = 8 * 1024 * 1024;
-      gamepak_rom = malloc(gamepak_ram_buffer_size);
+  if(!try_gamepak_buffer_alloc(32 * 1024 * 1024))
+  {
+    if(!try_gamepak_buffer_alloc(16 * 1024 * 1024))
+    {
+      while(!try_gamepak_buffer_alloc(gamepak_ram_buffer_size - (2 * 1024 * 1024)) &&
+       gamepak_ram_buffer_size > (4 * 1024 * 1024))
+        ;
+    }
+  }
 #endif
 
-#ifndef _arch_dreamcast
-  // Here's assuming we'll have enough memory left over for this,
-  // and that the above succeeded (if not we're in trouble all around)
-  gamepak_ram_pages = gamepak_ram_buffer_size / (32 * 1024);
-  gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) *
-   gamepak_ram_pages);
-#else
-  gamepak_ram_pages = gamepak_ram_buffer_size / (8 * 1024);
+  if(gamepak_rom == NULL)
+    return;
+
+  gamepak_ram_pages = gamepak_ram_buffer_size / GAMEPAK_SWAP_PAGE_SIZE;
+  if(gamepak_ram_pages == 0)
+    gamepak_ram_pages = 1;
+
   gamepak_memory_map = malloc(sizeof(gamepak_swap_entry_type) * gamepak_ram_pages);
-#endif
+  if(gamepak_memory_map == NULL)
+  {
+    free(gamepak_rom);
+    gamepak_rom = NULL;
+    gamepak_ram_pages = 0;
+  }
 }
 
 void init_memory()
@@ -3132,22 +3287,41 @@ void init_memory()
   sound_##type##_savestate(savestate_file);                                   \
   video_##type##_savestate(savestate_file)                                    \
 
+static void memory_repair_flash_bank_ptr(void)
+{
+  if(flash_bank_ptr < gamepak_backup ||
+   flash_bank_ptr >= gamepak_backup + sizeof(gamepak_backup))
+    flash_bank_ptr = gamepak_backup;
+}
+
 void load_state(char *savestate_filename)
 {
-  file_open(savestate_file, savestate_filename, read);
-  if(file_check_valid(savestate_file))
+  u32 reload_attempted = 0;
+  u32 i;
+  u32 current_color;
+
+  if(sound_initialized)
+  {
+    SDL_LockMutex(sound_mutex);
+    SDL_PauseAudio(1);
+  }
+
+  while(1)
   {
     char current_gamepak_filename[512];
-    char savestate_gamepak_filename[512];
-    u32 i;
-    u32 current_color;
+
+    file_open(savestate_file, savestate_filename, read);
+
+    if(!file_check_valid(savestate_file))
+      break;
 
     file_seek(savestate_file, (240 * 160 * 2) + sizeof(time_t), SEEK_SET);
-
     strcpy(current_gamepak_filename, gamepak_filename);
 
     savestate_block(read);
     file_close(savestate_file);
+
+    memory_repair_flash_bank_ptr();
 
     flush_translation_cache_ram();
     flush_translation_cache_rom();
@@ -3155,53 +3329,64 @@ void load_state(char *savestate_filename)
 
     oam_update = 1;
     gbc_sound_update = 1;
-    if(strcmp(current_gamepak_filename, gamepak_filename))
+
+    if(!reload_attempted && strcmp(current_gamepak_filename, gamepak_filename))
     {
-      // We'll let it slide if the filenames of the savestate and
-      // the gamepak are similar enough.
       u32 dot_position = strcspn(current_gamepak_filename, ".");
+
       if(strncmp(savestate_filename, current_gamepak_filename, dot_position))
       {
         if(load_gamepak(gamepak_filename) != -1)
         {
           reset_gba();
-          // Okay, so this takes a while, but for now it works.
-          load_state(savestate_filename);
-        }
-        else
-        {
-          quit();
+          reload_attempted = 1;
+          continue;
         }
 
-        return;
+#ifdef _arch_dreamcast
+        gpsp_gamepak_load_error((char *)gamepak_filename);
+#else
+        quit();
+#endif
       }
     }
 
     for(i = 0; i < 512; i++)
     {
       current_color = palette_ram[i];
-      palette_ram_converted[i] =
-       convert_palette(current_color);
+      palette_ram_converted[i] = convert_palette(current_color);
     }
 
-    // Oops, these contain raw pointers
     for(i = 0; i < 4; i++)
-    {
       gbc_sound_channel[i].sample_data = square_pattern_duty[2];
-    }
+
     current_debug_state = STEP;
     instruction_count = 0;
-
     reg[CHANGED_PC_STATUS] = 1;
+    break;
+  }
+
+  if(sound_initialized)
+  {
+    SDL_PauseAudio(0);
+    SDL_UnlockMutex(sound_mutex);
   }
 }
 
 u8 savestate_write_buffer[506947];
 u8 *write_mem_ptr;
 
-void save_state(char *savestate_filename, u16 *screen_capture)
+s32 save_state(char *savestate_filename, u16 *screen_capture)
 {
+  s32 valid = 0;
   write_mem_ptr = savestate_write_buffer;
+
+  if(sound_initialized)
+  {
+    SDL_LockMutex(sound_mutex);
+    SDL_PauseAudio(1);
+  }
+
   file_open(savestate_file, savestate_filename, write);
   if(file_check_valid(savestate_file))
   {
@@ -3212,10 +3397,20 @@ void save_state(char *savestate_filename, u16 *screen_capture)
     file_write_mem_variable(savestate_file, current_time);
 
     savestate_block(write_mem);
-    file_write(savestate_file, savestate_write_buffer,
+    valid = file_write_ok(savestate_file, savestate_write_buffer,
      sizeof(savestate_write_buffer));
-    file_close(savestate_file);
+    if(file_close(savestate_file) != 0)
+      valid = 0;
   }
+
+  if(sound_initialized)
+  {
+    SDL_PauseAudio(0);
+    SDL_UnlockMutex(sound_mutex);
+  }
+  if(!valid)
+    gpsp_save_error("Savestate", savestate_filename);
+  return valid ? 0 : -1;
 }
 
 

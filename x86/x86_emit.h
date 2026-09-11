@@ -20,6 +20,10 @@
 #ifndef X86_EMIT_H
 #define X86_EMIT_H
 
+/* The x86 backend emits bytes; the SH-4 backend defines this as u16 *.
+   cpu_threaded.c declares its translation cursors with this type. */
+typedef u8 *translation_ptr_t;
+
 u32 x86_update_gba(u32 pc);
 
 // Although these are defined as a function, don't call them as
@@ -29,6 +33,7 @@ void x86_indirect_branch_thumb(u32 address);
 void x86_indirect_branch_dual(u32 address);
 
 void step_debug_x86(u32 pc);
+void set_cpu_mode(u32 mode);
 
 typedef enum
 {
@@ -415,6 +420,12 @@ typedef enum
 #define generate_update_pc(new_pc)                                            \
   x86_emit_mov_reg_imm(eax, new_pc)                                           \
 
+/* Force a PC/cycle sync at translate time (force_pc_update_target);
+   x86_update_gba takes the PC in eax and reloads the cycle counter. */
+#define generate_update_pc_reg()                                              \
+  generate_update_pc(pc);                                                     \
+  generate_function_call(x86_update_gba)                                      \
+
 #define generate_cycle_update()                                               \
   x86_emit_sub_reg_imm(reg_cycles, cycle_count);                              \
   cycle_count = 0                                                             \
@@ -494,7 +505,7 @@ typedef enum
 #define generate_block_extra_vars_thumb()                                     \
 
 
-#define translate_invalidate_dcache()                                         \
+#define translate_invalidate_dcache_region(cache_start, cache_end)            \
 
 #define block_prologue_size 0
 
@@ -921,12 +932,35 @@ u32 function_cc execute_rrx(u32 value)
     generate_indirect_branch_arm();                                           \
   }                                                                           \
 
+extern u32 bios_read_protect;
+
+static u32 x86_take_pending_irq(u32 return_pc)
+{
+  if((io_registers[REG_IE] & io_registers[REG_IF]) &&
+   io_registers[REG_IME] && ((reg[REG_CPSR] & 0x80) == 0))
+  {
+    /* Match raise_interrupt(): BIOS open-bus value for the IRQ entry. */
+    bios_read_protect = 0xe55ec002;
+    reg_mode[MODE_IRQ][6] = return_pc + 4;
+    spsr[MODE_IRQ] = reg[REG_CPSR];
+    reg[REG_CPSR] = 0xD2;
+    set_cpu_mode(MODE_IRQ);
+    return 0x00000018;
+  }
+
+  return 0;
+}
+
 u32 function_cc execute_spsr_restore(u32 address)
 {
+  u32 irq_pc;
+
   reg[REG_CPSR] = spsr[reg[CPU_MODE]];
   extract_flags();
   set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-  check_for_interrupts();
+  irq_pc = x86_take_pending_irq(address);
+  if(irq_pc != 0)
+    address = irq_pc;
 
   if(reg[REG_CPSR] & 0x20)
     address |= 0x01;
@@ -1247,17 +1281,29 @@ u32 function_cc execute_read_spsr()
   generate_function_call(execute_read_##psr_reg);                             \
   generate_store_reg(rv, rd)                                                  \
 
-void function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask)
+u32 function_cc execute_store_cpsr(u32 new_cpsr, u32 store_mask, u32 pc)
 {
   reg[REG_CPSR] = (new_cpsr & store_mask) | (reg[REG_CPSR] & (~store_mask));
   extract_flags();
   if(store_mask & 0xFF)
   {
     set_cpu_mode(cpu_modes[reg[REG_CPSR] & 0x1F]);
-    // TODO: check for interrupts, since this can change PC it has to be
-    // cased in ASM
+    return x86_take_pending_irq(pc);
   }
+
+  return 0;
 }
+
+void function_cc x86_cheat_hook(void)
+{
+  process_cheats();
+}
+
+#define arm_process_cheats() \
+  generate_function_call(x86_cheat_hook)
+
+#define thumb_process_cheats() \
+  generate_function_call(x86_cheat_hook)
 
 void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 {
@@ -1271,10 +1317,32 @@ void function_cc execute_store_spsr(u32 new_spsr, u32 store_mask)
 #define arm_psr_load_new_imm()                                                \
   generate_load_imm(a0, imm)                                                  \
 
+#define arm_psr_store_cpsr_post()                                             \
+  do {                                                                        \
+    u8 *_skip_irq;                                                            \
+    x86_emit_test_reg_reg(reg_rv, reg_rv);                                   \
+    x86_emit_j_filler(x86_condition_code_z, _skip_irq);                       \
+    x86_emit_mov_reg_reg(eax, reg_rv);                                        \
+    generate_indirect_branch_arm();                                           \
+    generate_branch_patch_conditional(_skip_irq, translation_ptr);            \
+  } while(0)                                                                  \
+
+/* Suffix dispatch: defining arm_psr_store_finish twice with a parameter
+   named cpsr/spsr made the spsr definition shadow the cpsr one, so MSR
+   CPSR silently called execute_store_spsr (same bug fixed in the SH-4
+   backend). */
+#define arm_psr_store_finish_cpsr()                                           \
+  generate_load_pc(a2, pc);                                                   \
+  generate_function_call(execute_store_cpsr);                                 \
+  arm_psr_store_cpsr_post()                                                   \
+
+#define arm_psr_store_finish_spsr()                                           \
+  generate_function_call(execute_store_spsr)                                  \
+
 #define arm_psr_store(op_type, psr_reg)                                       \
   arm_psr_load_new_##op_type();                                               \
   generate_load_imm(a1, psr_masks[psr_field]);                                \
-  generate_function_call(execute_store_##psr_reg)                             \
+  arm_psr_store_finish_##psr_reg()                                            \
 
 #define arm_psr(op_type, transfer_type, psr_reg)                              \
 {                                                                             \
@@ -1485,64 +1553,117 @@ void function_cc execute_aligned_store32(u32 address, u32 source)
     write_memory32(address, source);
 }
 
-#define arm_block_memory_load()                                               \
-  generate_function_call(execute_aligned_load32);                             \
-  generate_store_reg(rv, i)                                                   \
+/* ARM LDM/STM goes through a C helper decoding the opcode itself, exactly
+   like the SH-4 backend (dc/sh4_helpers.c) and with the same semantics as
+   the audited interpreter: transfers first, then writeback (suppressed for
+   LDM with the base in the list), S-bit user-bank transfers, and STM of the
+   PC storing pc + 8. */
+extern u8 bit_count[256];
 
-#define arm_block_memory_store()                                              \
-  generate_load_reg_pc(a1, i, 8);                                             \
-  generate_function_call(execute_aligned_store32)                             \
+static u32 block_memory_reg_count(u32 reg_list)
+{
+  return bit_count[reg_list >> 8] + bit_count[reg_list & 0xFF];
+}
 
-#define arm_block_memory_final_load()                                         \
-  arm_block_memory_load()                                                     \
+static u32 block_memory_user_bank(u32 reg_num, u32 s_bit)
+{
+  return s_bit && reg_num >= 8 && reg_num <= 14 && reg[CPU_MODE] != MODE_USER;
+}
 
-#define arm_block_memory_final_store()                                        \
-  generate_load_reg_pc(a1, i, 12);                                            \
-  generate_load_pc(a2, (pc + 4));                                             \
-  generate_function_call(execute_store_u32)                                   \
+void function_cc execute_arm_block_memory(u32 opcode, u32 insn_pc)
+{
+  u32 rn = (opcode >> 16) & 0x0F;
+  u32 reg_list = opcode & 0xFFFF;
+  u32 load = (opcode >> 20) & 1;
+  u32 writeback = (opcode >> 21) & 1;
+  u32 s_bit = (opcode >> 22) & 1;
+  u32 up = (opcode >> 23) & 1;
+  u32 pre = (opcode >> 24) & 1;
+  u32 base = reg[rn];
+  u32 count = block_memory_reg_count(reg_list);
+  u32 address;
+  u32 i;
 
-#define arm_block_memory_adjust_pc_store()                                    \
+  if(pre)
+  {
+    if(up)
+      address = (base + 4) & 0xFFFFFFFC;
+    else
+      address = (base - (count * 4)) & 0xFFFFFFFC;
+  }
+  else
+  {
+    if(up)
+      address = base & 0xFFFFFFFC;
+    else
+      address = (base - (count * 4) + 4) & 0xFFFFFFFC;
+  }
 
-#define arm_block_memory_adjust_pc_load()                                     \
-  if(reg_list & 0x8000)                                                       \
+  for(i = 0; i < 15; i++)
+  {
+    if((reg_list >> i) & 0x01)
+    {
+      if(load)
+      {
+        u32 value = execute_aligned_load32(address);
+
+        if(block_memory_user_bank(i, s_bit))
+          reg_mode[MODE_USER][i - 8] = value;
+        else
+          reg[i] = value;
+      }
+      else
+      {
+        u32 value = block_memory_user_bank(i, s_bit) ?
+         reg_mode[MODE_USER][i - 8] : reg[i];
+
+        execute_aligned_store32(address, value);
+      }
+
+      address += 4;
+    }
+  }
+
+  if(writeback)
+  {
+    if(!(load && ((reg_list >> rn) & 0x01)))
+    {
+      if(up)
+        reg[rn] = base + (count * 4);
+      else
+        reg[rn] = base - (count * 4);
+    }
+  }
+
+  if(reg_list & 0x8000)
+  {
+    if(load)
+    {
+      reg[REG_PC] = execute_aligned_load32(address);
+    }
+    else
+    {
+      /* Reading PC during STM yields insn_pc + 8 (interpreter parity). */
+      execute_aligned_store32(address, insn_pc + 8);
+    }
+  }
+}
+
+#define arm_block_memory_branch_pc_load()                                     \
+  if(opcode & 0x8000)                                                         \
   {                                                                           \
-    generate_mov(a0, rv);                                                     \
-    generate_indirect_branch_arm();                                           \
+    generate_load_reg(a0, REG_PC);                                            \
+    generate_indirect_branch_dual();                                          \
   }                                                                           \
 
-#define arm_block_memory(access_type, pre_op, post_op, wb, s_bit)             \
+#define arm_block_memory_branch_pc_store()                                    \
+
+#define arm_block_memory(access_type, pre_op, post_op, s_bit)                 \
 {                                                                             \
-  arm_decode_block_trans();                                                   \
-  u32 i;                                                                      \
-  u32 offset = 0;                                                             \
-                                                                              \
-  generate_load_reg(s0, rn);                                                  \
-  generate_and_imm(s0, ~0x03);                                                \
-  arm_block_address_preadjust_##pre_op();                                     \
-  generate_mov(a0, s0);                                                       \
-  arm_block_address_postadjust_##post_op();                                   \
-  arm_block_writeback_##wb(access_type);                                      \
-                                                                              \
-  sprint_##s_bit(access_type, pre_op, post_op, wb);                           \
-                                                                              \
-  for(i = 0; i < 16; i++)                                                     \
-  {                                                                           \
-    if((reg_list >> i) & 0x01)                                                \
-    {                                                                         \
-      generate_add_reg_reg_imm(a0, s0, offset)                                \
-      if(reg_list & ~((2 << i) - 1))                                          \
-      {                                                                       \
-        arm_block_memory_##access_type();                                     \
-        offset += 4;                                                          \
-      }                                                                       \
-      else                                                                    \
-      {                                                                       \
-        arm_block_memory_final_##access_type();                               \
-      }                                                                       \
-    }                                                                         \
-  }                                                                           \
-                                                                              \
-  arm_block_memory_adjust_pc_##access_type();                                 \
+  generate_load_imm(a0, opcode);                                              \
+  generate_load_pc(a1, pc);                                                   \
+  generate_function_call(execute_arm_block_memory);                           \
+  arm_block_memory_branch_pc_##access_type();                                 \
 }                                                                             \
 
 #define arm_swap(type)                                                        \

@@ -1,0 +1,16 @@
+name: Host tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dreamcast, 'cursor/**', 'claude/**', 'codex/**']
+  pull_request:
+    branches: [dreamcast]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run contract tests
+        run: make -C tests test

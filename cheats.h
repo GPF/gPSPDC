@@ -17,6 +17,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef CHEATS_H
+#define CHEATS_H
+
 #define CHEAT_NAME_LENGTH 17
 
 typedef enum
@@ -37,8 +40,15 @@ typedef struct
 
 void process_cheats();
 void add_cheats(u8 *cheats_filename);
+u32 cheat_pc_is_hook(u32 pc);
 
-#define MAX_CHEATS 8
+#define MAX_CHEATS 10
+#define MAX_CHEAT_HOOKS 8
 
 extern cheat_type cheats[MAX_CHEATS];
 extern u32 num_cheats;
+extern u32 cheat_master_hooks[MAX_CHEAT_HOOKS];
+extern u32 cheat_num_master_hooks;
+extern u32 cheat_master_hook;
+
+#endif

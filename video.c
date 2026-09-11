@@ -2124,9 +2124,12 @@ void order_obj(u32 video_mode)
             for(row = obj_y; row < obj_y + obj_height; row++)
             {
               current_count = obj_priority_count[obj_priority][row];
-              obj_priority_list[obj_priority][row][current_count] = obj_num;
-              obj_priority_count[obj_priority][row] = current_count + 1;
-              obj_alpha_count[row]++;
+              if(current_count < 128)
+              {
+                obj_priority_list[obj_priority][row][current_count] = obj_num;
+                obj_priority_count[obj_priority][row] = current_count + 1;
+                obj_alpha_count[row]++;
+              }
             }
           }
           else
@@ -2139,8 +2142,11 @@ void order_obj(u32 video_mode)
             for(row = obj_y; row < obj_y + obj_height; row++)
             {
               current_count = obj_priority_count[obj_priority][row];
-              obj_priority_list[obj_priority][row][current_count] = obj_num;
-              obj_priority_count[obj_priority][row] = current_count + 1;
+              if(current_count < 128)
+              {
+                obj_priority_list[obj_priority][row][current_count] = obj_num;
+                obj_priority_count[obj_priority][row] = current_count + 1;
+              }
             }
           }
         }
@@ -3167,33 +3173,33 @@ void update_scanline()
 
   order_layers((dispcnt >> 8) & active_layers[video_mode]);
 
-  if(skip_next_frame)
-    return;
-
-  // If the screen is in in forced blank draw pure white.
-  if(dispcnt & 0x80)
+  if(!skip_next_frame)
   {
-    fill_line_color16(0xFFFF, screen_offset, 0, 240);
-  }
-  else
-  {
-    if(video_mode < 3)
+    // If the screen is in in forced blank draw pure white.
+    if(dispcnt & 0x80)
     {
-      if(dispcnt >> 13)
-      {
-        render_scanline_window_tile(screen_offset, dispcnt);
-      }
-      else
-      {
-        render_scanline_tile(screen_offset, dispcnt);
-      }
+      fill_line_color16(0xFFFF, screen_offset, 0, 240);
     }
     else
     {
-      if(dispcnt >> 13)
-        render_scanline_window_bitmap(screen_offset, dispcnt);
+      if(video_mode < 3)
+      {
+        if(dispcnt >> 13)
+        {
+          render_scanline_window_tile(screen_offset, dispcnt);
+        }
+        else
+        {
+          render_scanline_tile(screen_offset, dispcnt);
+        }
+      }
       else
-        render_scanline_bitmap(screen_offset, dispcnt);
+      {
+        if(dispcnt >> 13)
+          render_scanline_window_bitmap(screen_offset, dispcnt);
+        else
+          render_scanline_bitmap(screen_offset, dispcnt);
+      }
     }
   }
 
@@ -3209,6 +3215,7 @@ u32 screen_flip = 0;
 
 void flip_screen()
 {
+  gpsp_draw_save_notice();
   if(video_direct == 0)
   {
     u32 *old_ge_cmd_ptr = ge_cmd_ptr;
@@ -3269,6 +3276,17 @@ void flip_screen()
 
 void flip_screen()
 {
+  gpsp_draw_save_notice();
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+  static u32 trace_flip_screen;
+
+  trace_flip_screen++;
+  if((trace_flip_screen & 63) == 1)
+    printf("[gbaDC trace] flip_screen #%u screen=%p w=%d h=%d pitch=%d\n",
+     trace_flip_screen, screen, screen ? screen->w : 0, screen ? screen->h : 0,
+     screen ? screen->pitch : 0);
+#endif
+
   // if((video_scale != 1) && (current_scale != unscaled))
   // {
   //   s32 x, y;
@@ -3308,6 +3326,45 @@ void flip_screen()
   // }
   SDL_Flip(screen);
 }
+
+#if defined(_arch_dreamcast) && defined(GPSP_DC_RUNTIME_TRACE)
+void gpsp_dc_debug_video_test_pattern(void)
+{
+  u32 pitch = get_screen_pitch();
+  u16 *dest = get_screen_pixels();
+  u32 x, y;
+
+  printf("[gbaDC trace] video test pattern begin screen=%p w=%d h=%d pitch=%d\n",
+   screen, screen ? screen->w : 0, screen ? screen->h : 0,
+   screen ? screen->pitch : 0);
+
+  if(screen == NULL || dest == NULL)
+  {
+    printf("[gbaDC trace] video test pattern skipped: null screen/buffer\n");
+    return;
+  }
+
+  clear_screen(0x0000);
+
+  for(y = 0; y < 160; y++)
+  {
+    u16 *line = dest + (y * pitch);
+
+    for(x = 0; x < 240; x++)
+    {
+      if(x < 80)
+        line[x] = 0x001F;
+      else if(x < 160)
+        line[x] = 0x03E0;
+      else
+        line[x] = 0x7C00;
+    }
+  }
+
+  flip_screen();
+  printf("[gbaDC trace] video test pattern flipped\n");
+}
+#endif
 
 #endif
 
@@ -3415,7 +3472,7 @@ void init_video()
 		//SDL_Joystick *_joystick = SDL_JoystickOpen(0);
 		// SDL_DC_SetVideoDriver(SDL_DC_DMA_VIDEO);
     // SDL_DC_SetWindow(240,160);
-		//SDL_DC_VerticalWait(SDL_FALSE);
+		SDL_DC_VerticalWait(SDL_FALSE);
 		//SDL_DC_EmulateKeyboard(SDL_TRUE);
         SDL_DC_MapKey(0, SDL_DC_LEFT, SDLK_LEFT);
         SDL_DC_MapKey(0, SDL_DC_RIGHT, SDLK_RIGHT);
@@ -3430,12 +3487,26 @@ void init_video()
 
 
 #endif  
-  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) < 0) {
-                             printf("Can't init SDL\n");
-                             return;
-                             }
-  printf("SDL initialized\nSet video mode to %dx%d\n",240 * video_scale, 160 * video_scale);
-  screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
+  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) < 0)
+  {
+#ifdef _arch_dreamcast
+    gpsp_video_init_error(SDL_GetError());
+#else
+    gpsp_debug_printf("Can't init SDL\n");
+    return;
+#endif
+  }
+
+  gpsp_debug_printf("SDL initialized\nSet video mode to %dx%d\n",
+   240 * video_scale, 160 * video_scale);
+  screen = SDL_SetVideoMode(240 * video_scale, 160 * video_scale, 16,
+   SDL_HWSURFACE | SDL_DOUBLEBUF);
+
+#ifdef _arch_dreamcast
+  if(screen == NULL)
+    gpsp_video_init_error(SDL_GetError());
+#endif
+
   SDL_ShowCursor(0);
 }
 
@@ -3551,11 +3622,17 @@ void video_resolution_large()
   if(current_scale != unscaled)
   {
     current_scale = unscaled;
+#ifdef _arch_dreamcast
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
+    screen = SDL_SetVideoMode(640, 480, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
+#else
     screen = SDL_SetVideoMode(512, 512, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
+#endif
     resolution_width = 480;
     resolution_height = 272;
+#ifdef _arch_dreamcast
     SDL_DC_SetWindow(resolution_width,resolution_height);
+#endif
   }
 }
 
@@ -3564,12 +3641,16 @@ void video_resolution_small()
   if(current_scale != screen_scale)
   {
     current_scale = screen_scale;
+#ifdef _arch_dreamcast
     SDL_DC_SetVideoDriver(SDL_DC_TEXTURED_VIDEO); 
+#endif
     screen = SDL_SetVideoMode(256 * video_scale,
      256 * video_scale, 16, SDL_HWSURFACE|SDL_DOUBLEBUF);
     resolution_width = small_resolution_width;
     resolution_height = small_resolution_height;
+#ifdef _arch_dreamcast
     SDL_DC_SetWindow(resolution_width,resolution_height);   
+#endif
   }
 }
 
@@ -3606,80 +3687,117 @@ void clear_screen(u16 color)
   }
 }
 
+void clear_screen_region(u32 x, u32 y, u32 w, u32 h, u16 color)
+{
+  u32 pitch = get_screen_pitch();
+  u16 *dest_ptr = get_screen_pixels() + x + (y * pitch);
+  u32 line_skip = pitch - w;
+  u32 cx, cy;
+
+  for(cy = 0; cy < h; cy++)
+  {
+    for(cx = 0; cx < w; cx++, dest_ptr++)
+      *dest_ptr = color;
+
+    dest_ptr += line_skip;
+  }
+}
+
 #endif
 
 u16 *copy_screen()
 {
+  u32 pitch = get_screen_pitch();
+  u16 *src = get_screen_pixels();
   u16 *copy = malloc(240 * 160 * 2);
-  memcpy(copy, get_screen_pixels(), 240 * 160 * 2);
+  u32 y, x;
+  u16 *dest = copy;
+
+  if(copy == NULL)
+    return NULL;
+
+  for(y = 0; y < 160; y++)
+  {
+    u16 *src_line = src + (y * pitch);
+
+    for(x = 0; x < 240; x++)
+      *dest++ = src_line[x];
+  }
+
   return copy;
+}
+
+static void blit_to_screen_pitch_copy(u16 *src, u32 w, u32 h,
+ u32 dest_x, u32 dest_y)
+{
+  u32 pitch = get_screen_pitch();
+  u16 *dest_ptr = get_screen_pixels() + dest_x + (dest_y * pitch);
+  u16 *src_ptr = src;
+  u32 line_skip = pitch - w;
+  u32 x, y;
+
+  for(y = 0; y < h; y++)
+  {
+    for(x = 0; x < w; x++, src_ptr++, dest_ptr++)
+      *dest_ptr = *src_ptr;
+
+    dest_ptr += line_skip;
+  }
 }
 
 void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y)
 {
-  // u32 pitch = get_screen_pitch();
-  // u16 *dest_ptr = get_screen_pixels() + dest_x + (dest_y * pitch);
-  // u16 *src_ptr = src;
-  // u32 line_skip = pitch - w;
-  // u32 x, y;
+#ifdef _arch_dreamcast
+#ifdef GPSP_DC_BLIT_MEMCPY
+  blit_to_screen_pitch_copy(src, w, h, dest_x, dest_y);
+#else
+  u32 pitch = get_screen_pitch();
+  u16 *dest_base = get_screen_pixels();
+  u32 dest_offset = dest_x + (dest_y * pitch);
+  u32 *sq_dest = (u32 *)((u32)dest_base + 0x10000000 + (dest_offset * 2));
+  u32 sq_blocks = w / 16;
+  u32 remainder = w % 16;
+  volatile u32 *sq0 = (volatile u32 *)0xE0000000;
+  u32 y, block, x;
 
-  // for(y = 0; y < h; y++)
-  // {
-  //   for(x = 0; x < w; x++, src_ptr++, dest_ptr++)
-  //   {
-  //     *dest_ptr = *src_ptr;
-  //   }
-  //   dest_ptr += line_skip;
-  // }
+  for(y = 0; y < h; y++)
+  {
+    u16 *src_line = src + (y * w);
+    u32 *sq_line_dest = sq_dest + (y * pitch);
+
+    for(block = 0; block < sq_blocks; block++)
+    {
+      sq0[0] = (src_line[1] << 16) | src_line[0];
+      sq0[1] = (src_line[3] << 16) | src_line[2];
+      sq0[2] = (src_line[5] << 16) | src_line[4];
+      sq0[3] = (src_line[7] << 16) | src_line[6];
+      sq0[4] = (src_line[9] << 16) | src_line[8];
+      sq0[5] = (src_line[11] << 16) | src_line[10];
+      sq0[6] = (src_line[13] << 16) | src_line[12];
+      sq0[7] = (src_line[15] << 16) | src_line[14];
+
+      asm volatile("pref @%0" : : "r"(sq_line_dest) : "memory");
+      *sq_line_dest = sq0[0];
+
+      src_line += 16;
+      sq_line_dest += 8;
+    }
+
+    if(remainder)
+    {
+      u16 *rem_dest = (u16 *)sq_line_dest;
+
+      for(x = 0; x < remainder; x++)
+        *rem_dest++ = *src_line++;
+    }
+  }
+
+  asm volatile("nop; nop; nop; nop;");
+#endif
+#else
+  blit_to_screen_pitch_copy(src, w, h, dest_x, dest_y);
+#endif
 }
-// void blit_to_screen(u16 *src, u32 w, u32 h, u32 dest_x, u32 dest_y) {
-//   // Get screen pitch and base pointer
-//   u32 pitch = get_screen_pitch(); // In 16-bit words
-//   u16 *dest_base = get_screen_pixels();
-//   u32 dest_offset = dest_x + (dest_y * pitch);
-//   u32 *sq_dest = (u32 *)(((uintptr_t)dest_base + 0x10000000) + (dest_offset * 2)); // VRAM in P2 area, bytes
-
-//   // SQ setup
-//   u32 sq_blocks = w / 16; // Full 32-byte blocks per line
-//   u32 remainder = w % 16; // Leftover pixels
-//   volatile u32 *sq0 = (volatile u32 *)0xE0000000; // SQ0 base
-
-//   for (u32 y = 0; y < h; y++) {
-//       u16 *src_line = src + (y * w);
-//       u32 *sq_line_dest = sq_dest + (y * pitch);
-
-//       // Process full 32-byte blocks with SQ
-//       for (u32 block = 0; block < sq_blocks; block++) {
-//           // Pack 16 pixels into SQ0
-//           sq0[0] = (src_line[1] << 16) | src_line[0];
-//           sq0[1] = (src_line[3] << 16) | src_line[2];
-//           sq0[2] = (src_line[5] << 16) | src_line[4];
-//           sq0[3] = (src_line[7] << 16) | src_line[6];
-//           sq0[4] = (src_line[9] << 16) | src_line[8];
-//           sq0[5] = (src_line[11] << 16) | src_line[10];
-//           sq0[6] = (src_line[13] << 16) | src_line[12];
-//           sq0[7] = (src_line[15] << 16) | src_line[14];
-
-//           // Write SQ0 to VRAM
-//           asm volatile("pref @%0" : : "r"(sq_line_dest) : "memory");
-//           *sq_line_dest = sq0[0]; // Trigger SQ write
-
-//           src_line += 16;
-//           sq_line_dest += 8; // 32 bytes = 8 words
-//       }
-
-//       // Handle remaining pixels
-//       if (remainder) {
-//           u16 *rem_dest = (u16 *)sq_line_dest;
-//           for (u32 x = 0; x < remainder; x++) {
-//               *rem_dest++ = *src_line++;
-//           }
-//       }
-//   }
-
-//   // Ensure SQ writes complete
-//   asm volatile("nop; nop; nop; nop;");
-// }
 
 void print_string_ext(const char *str, u16 fg_color, u16 bg_color,
  u32 x, u32 y, void *_dest_ptr, u32 pitch, u32 pad)

@@ -26,7 +26,13 @@ CFLAGS     += -funroll-loops -fstrength-reduce -fstrict-aliasing -fexpensive-opt
 CXXFLAGS   = ${CFLAGS} -fno-exceptions -fno-rtti
 ASFLAGS	   = ${CFLAGS}
 INCLUDES   = -I${PREFIX}/include -I${PREFIX}/include/SDL
-LIBS       = -L${PREFIX}/lib -lSDL -lpthread -lz -static
+ifeq ($(USE_MINIZ),1)
+CFLAGS     += -DGPSP_USE_MINIZ
+ZIP_LIBS   =
+else
+ZIP_LIBS   = -lz
+endif
+LIBS       = -L${PREFIX}/lib -lSDL -lpthread ${ZIP_LIBS} -static
 
 # Compilation:
 
@@ -41,4 +47,3 @@ all:	${OBJS}
 
 clean:
 	rm -f *.o ${BIN} 
-

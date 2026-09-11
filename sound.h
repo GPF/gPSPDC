@@ -24,19 +24,6 @@ void reset_sound();
 void sound_exit();
 #define BUFFER_SIZE 32768
 
-// A lot of sound cards on PC can't handle such small buffers but this
-// seems to work well on PSP.
-
-#ifdef PSP_BUILD
-
-#define SOUND_BUFFER_SIZE 8192
-
-#else
-
-#define SOUND_BUFFER_SIZE 8192
-
-#endif
-
 typedef enum
 {
   DIRECT_SOUND_INACTIVE,
@@ -116,8 +103,8 @@ extern u32 sound_frequency;
 extern u32 sound_on;
 
 extern u32 global_enable_audio;
-extern u32 enable_low_pass_filter;
 extern u32 audio_buffer_size_number;
+extern u32 sound_initialized;
 
 extern SDL_mutex *sound_mutex;
 extern SDL_cond *sound_cv;
@@ -145,7 +132,6 @@ void sound_read_savestate(file_tag_type savestate_file);
   gbc_sound_channel[channel].envelope_initial_ticks = envelope_ticks;         \
   gbc_sound_channel[channel].envelope_ticks = envelope_ticks;                 \
   gbc_sound_channel[channel].envelope_status = (envelope_ticks != 0);         \
-  gbc_sound_channel[channel].envelope_volume = initial_volume;                \
   gbc_sound_update = 1;                                                       \
   address16(io_registers, address) = value;                                   \
 }                                                                             \

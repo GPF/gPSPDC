@@ -49,6 +49,54 @@
 #define COLOR_FRAMESKIP_BAR color16(15, 31, 31)
 #define COLOR_HELP_TEXT     color16(16, 40, 24)
 
+/* Nonfatal feedback also covers saves triggered by bound gameplay buttons. */
+static char save_notice[40];
+static u32 save_notice_started;
+static u32 save_notice_active;
+
+void gpsp_save_error(const char *kind, const char *filename)
+{
+  snprintf(save_notice, sizeof(save_notice), "%s save failed", kind);
+  printf("%s: %s\n", save_notice, filename);
+  save_notice_started = SDL_GetTicks();
+  save_notice_active = 1;
+  flip_screen();
+}
+
+void gpsp_draw_save_notice(void)
+{
+  if(save_notice_active &&
+   (u32)(SDL_GetTicks() - save_notice_started) < 6000)
+  {
+    print_string(save_notice, 0xFFFF, 0x0000, 0, 0);
+    print_string("Check writable storage.", 0xFFFF, 0x0000, 0, 10);
+  }
+  else
+    save_notice_active = 0;
+}
+
+void gpsp_finish_save_notice(void)
+{
+  gui_action_type action;
+  if(!save_notice_active ||
+   (u32)(SDL_GetTicks() - save_notice_started) >= 6000)
+    return;
+  /* The quit action may still be held; require a fresh confirmation. */
+  print_string("A/Start: exit anyway", 0xFFFF, 0x0000, 0, 20);
+  flip_screen();
+  do
+  {
+    delay_us(16000);
+    action = get_gui_input();
+  } while(action != CURSOR_NONE);
+  do
+  {
+    delay_us(16000);
+    action = get_gui_input();
+  } while(action != CURSOR_SELECT);
+  save_notice_active = 0;
+}
+
 int sort_function(const void *dest_str_ptr, const void *src_str_ptr)
 {
   char *dest_str = *((char **)dest_str_ptr);
@@ -94,6 +142,8 @@ s32 load_file(u8 **wildcards, u8 *result)
   u32 current_column = 0;
   u32 repeat;
   u32 i;
+  u32 browser_dirty;
+  u32 browser_alloc_failed;
   gui_action_type gui_action;
 
   while(return_value == 1)
@@ -107,8 +157,17 @@ s32 load_file(u8 **wildcards, u8 *result)
 
     total_filenames_allocated = 32;
     total_dirnames_allocated = 32;
+    browser_alloc_failed = 0;
     file_list = (u8 **)malloc(sizeof(u8 *) * 32);
     dir_list = (u8 **)malloc(sizeof(u8 *) * 32);
+
+    if(file_list == NULL || dir_list == NULL)
+    {
+      free(file_list);
+      free(dir_list);
+      return -1;
+    }
+
     memset(file_list, 0, sizeof(u8 *) * 32);
     memset(dir_list, 0, sizeof(u8 *) * 32);
 
@@ -135,45 +194,79 @@ s32 load_file(u8 **wildcards, u8 *result)
       {
         file_name = current_file->d_name;
         file_name_length = strlen(file_name);
-
-        if((stat(file_name, &file_info) >= 0) &&
-         ((file_name[0] != '.') || (file_name[1] == '.')))
         {
-          if(S_ISDIR(file_info.st_mode))
-          {
-            dir_list[num_dirs] =
-             (u8 *)malloc(file_name_length + 1);
-            strcpy((char*)dir_list[num_dirs], file_name);
+          u32 entry_valid = 0;
+          u32 entry_is_dir = 0;
 
-            num_dirs++;
+#if defined(_arch_dreamcast) && defined(DT_UNKNOWN)
+          if(current_file->d_type != DT_UNKNOWN)
+          {
+            entry_valid = 1;
+            entry_is_dir = (current_file->d_type == DT_DIR);
+
+            if(!entry_is_dir && current_file->d_type != DT_REG)
+              entry_valid = 0;
           }
-          else
+#endif
+
+          if(!entry_valid && (stat(file_name, &file_info) >= 0))
           {
-            // Must match one of the wildcards, also ignore the .
-            if(file_name_length >= 4)
+            entry_valid = 1;
+            entry_is_dir = S_ISDIR(file_info.st_mode);
+          }
+
+          if(entry_valid &&
+           ((file_name[0] != '.') || (file_name[1] == '.')))
+          {
+            if(entry_is_dir)
             {
-              if(file_name[file_name_length - 4] == '.')
-                ext_pos = file_name_length - 4;
-              else
+              dir_list[num_dirs] =
+               (u8 *)malloc(file_name_length + 1);
 
-              if(file_name[file_name_length - 3] == '.')
-                ext_pos = file_name_length - 3;
-
-              else
-                ext_pos = 0;
-
-              for(i = 0; wildcards[i] != NULL; i++)
+              if(dir_list[num_dirs] == NULL)
               {
-                if(!strcasecmp((file_name + ext_pos),
-                 (char*)wildcards[i]))
+                browser_alloc_failed = 1;
+                break;
+              }
+
+              strcpy((char*)dir_list[num_dirs], file_name);
+
+              num_dirs++;
+            }
+            else
+            {
+              // Must match one of the wildcards, also ignore the .
+              if(file_name_length >= 4)
+              {
+                if(file_name[file_name_length - 4] == '.')
+                  ext_pos = file_name_length - 4;
+                else
+
+                if(file_name[file_name_length - 3] == '.')
+                  ext_pos = file_name_length - 3;
+
+                else
+                  ext_pos = 0;
+
+                for(i = 0; wildcards[i] != NULL; i++)
                 {
-                  file_list[num_files] =
-                   (u8 *)malloc(file_name_length + 1);
+                  if(!strcasecmp((file_name + ext_pos),
+                   (char*)wildcards[i]))
+                  {
+                    file_list[num_files] =
+                     (u8 *)malloc(file_name_length + 1);
 
-                  strcpy((char*)file_list[num_files], file_name);
+                    if(file_list[num_files] == NULL)
+                    {
+                      browser_alloc_failed = 1;
+                      break;
+                    }
 
-                  num_files++;
-                  break;
+                    strcpy((char*)file_list[num_files], file_name);
+
+                    num_files++;
+                    break;
+                  }
                 }
               }
             }
@@ -182,8 +275,16 @@ s32 load_file(u8 **wildcards, u8 *result)
 
         if(num_files == total_filenames_allocated)
         {
-          file_list = (u8 **)realloc(file_list, sizeof(u8 *) *
+          u8 **new_file_list = (u8 **)realloc(file_list, sizeof(u8 *) *
            total_filenames_allocated * 2);
+
+          if(new_file_list == NULL)
+          {
+            browser_alloc_failed = 1;
+            break;
+          }
+
+          file_list = new_file_list;
           memset(file_list + total_filenames_allocated, 0,
            sizeof(u8 *) * total_filenames_allocated);
           total_filenames_allocated *= 2;
@@ -191,14 +292,38 @@ s32 load_file(u8 **wildcards, u8 *result)
 
         if(num_dirs == total_dirnames_allocated)
         {
-          dir_list = (u8 **)realloc(dir_list, sizeof(u8 *) *
+          u8 **new_dir_list = (u8 **)realloc(dir_list, sizeof(u8 *) *
            total_dirnames_allocated * 2);
+
+          if(new_dir_list == NULL)
+          {
+            browser_alloc_failed = 1;
+            break;
+          }
+
+          dir_list = new_dir_list;
           memset(dir_list + total_dirnames_allocated, 0,
            sizeof(u8 *) * total_dirnames_allocated);
           total_dirnames_allocated *= 2;
         }
       }
     } while(current_file);
+
+    if(browser_alloc_failed)
+    {
+      for(i = 0; i < num_files; i++)
+        free(file_list[i]);
+
+      for(i = 0; i < num_dirs; i++)
+        free(dir_list[i]);
+
+      free(file_list);
+      free(dir_list);
+      if(current_dir)
+        closedir(current_dir);
+
+      return -1;
+    }
 
     qsort((void *)file_list, num_files, sizeof(u8 *), sort_function);
     qsort((void *)dir_list, num_dirs, sizeof(u8 *), sort_function);
@@ -221,6 +346,7 @@ s32 load_file(u8 **wildcards, u8 *result)
     }
 
     repeat = 1;
+    browser_dirty = 1;
 
     if(num_files == 0)
       current_column = 1;
@@ -230,49 +356,68 @@ s32 load_file(u8 **wildcards, u8 *result)
 
     while(repeat)
     {
-      flip_screen();
-
-      print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
-      print_string("Press X to return to the main menu.",
-       COLOR_HELP_TEXT, COLOR_BG, 20, 260);
-
-      for(i = 0, current_file_number = i + current_file_scroll_value;
-       i < FILE_LIST_ROWS; i++, current_file_number++)
+      if(browser_dirty)
       {
-        if(current_file_number < num_files)
+        print_string((char*)current_dir_short, COLOR_ACTIVE_ITEM, COLOR_BG, 0, 0);
+#ifdef _arch_dreamcast
+        print_string("ROM files", COLOR_HELP_TEXT, COLOR_BG, FILE_LIST_POSITION, 0);
+        print_string("Folders", COLOR_HELP_TEXT, COLOR_BG, DIR_LIST_POSITION, 0);
+        print_string("D-Pad: move   L/R: column   A/Start: open",
+         COLOR_HELP_TEXT, COLOR_BG, 0, 250);
+        print_string("B: cancel   X: parent folder",
+         COLOR_HELP_TEXT, COLOR_BG, 0, 260);
+#else
+        print_string("Press X to return to the main menu.",
+         COLOR_HELP_TEXT, COLOR_BG, 20, 260);
+#endif
+
+        for(i = 0, current_file_number = i + current_file_scroll_value;
+         i < FILE_LIST_ROWS; i++, current_file_number++)
         {
-          if((current_file_number == current_file_selection) &&
-           (current_column == 0))
+          if(current_file_number < num_files)
           {
-            print_string((char*)file_list[current_file_number], COLOR_ACTIVE_ITEM,
-             COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
-          }
-          else
-          {
-            print_string((char*)file_list[current_file_number], COLOR_INACTIVE_ITEM,
-             COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
+            if((current_file_number == current_file_selection) &&
+             (current_column == 0))
+            {
+              print_string((char*)file_list[current_file_number], COLOR_ACTIVE_ITEM,
+               COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
+            }
+            else
+            {
+              print_string((char*)file_list[current_file_number], COLOR_INACTIVE_ITEM,
+               COLOR_BG, FILE_LIST_POSITION, ((i + 1) * 10));
+            }
           }
         }
-      }
 
-      for(i = 0, current_dir_number = i + current_dir_scroll_value;
-       i < FILE_LIST_ROWS; i++, current_dir_number++)
-      {
-        if(current_dir_number < num_dirs)
+        for(i = 0, current_dir_number = i + current_dir_scroll_value;
+         i < FILE_LIST_ROWS; i++, current_dir_number++)
         {
-          if((current_dir_number == current_dir_selection) &&
-           (current_column == 1))
+          if(current_dir_number < num_dirs)
           {
-            print_string((char*)dir_list[current_dir_number], COLOR_ACTIVE_ITEM,
-             COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
-          }
-          else
-          {
-            print_string((char*)dir_list[current_dir_number], COLOR_INACTIVE_ITEM,
-             COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
+            if((current_dir_number == current_dir_selection) &&
+             (current_column == 1))
+            {
+              print_string((char*)dir_list[current_dir_number], COLOR_ACTIVE_ITEM,
+               COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
+            }
+            else
+            {
+              print_string((char*)dir_list[current_dir_number], COLOR_INACTIVE_ITEM,
+               COLOR_BG, DIR_LIST_POSITION, ((i + 1) * 10));
+            }
           }
         }
+
+        flip_screen();
+        browser_dirty = 0;
       }
+#ifdef _arch_dreamcast
+      else
+      {
+        delay_us(16000);
+      }
+#endif
 
       gui_action = get_gui_input();
 
@@ -381,7 +526,8 @@ s32 load_file(u8 **wildcards, u8 *result)
             {
               repeat = 0;
               return_value = 0;
-              strcpy((char*)result, (char*)file_list[current_file_selection]);
+              snprintf((char*)result, 512, "%s",
+               (char*)file_list[current_file_selection]);
             }
           }
           break;
@@ -407,6 +553,10 @@ s32 load_file(u8 **wildcards, u8 *result)
         default:
           break;
       }
+
+      if(gui_action == CURSOR_DOWN || gui_action == CURSOR_UP ||
+       gui_action == CURSOR_LEFT || gui_action == CURSOR_RIGHT)
+        browser_dirty = 1;
     }
 
     for(i = 0; i < num_files; i++)
@@ -621,11 +771,13 @@ s32 load_game_config_file()
     u32 file_size = file_length(game_config_filename, game_config_file);
 
     // Sanity check: File size must be the right size
-    if(file_size == 56)
+    u32 file_options[14];
+    u32 valid = file_size == sizeof(file_options) &&
+     file_read_ok(game_config_file, file_options, sizeof(file_options));
+    if(file_close(game_config_file) != 0)
+      valid = 0;
+    if(valid)
     {
-      u32 file_options[file_size / 4];
-
-      file_read_array(game_config_file, file_options);
       current_frameskip_type = file_options[0] % 3;
       frameskip_value = file_options[1];
       random_skip = file_options[2] & 1;
@@ -644,7 +796,6 @@ s32 load_game_config_file()
         frameskip_value = 99;
 
 
-      file_close(game_config_file);
       file_loaded = 1;
     }
   }
@@ -681,12 +832,17 @@ s32 load_config_file()
     u32 file_size = file_length(config_path, config_file);
 
     // Sanity check: File size must be the right size
-    if(file_size == 92)
+    u32 file_options[23];
+    u32 valid = file_size == sizeof(file_options) &&
+     file_read_ok(config_file, file_options, sizeof(file_options));
+    if(file_close(config_file) != 0)
+      valid = 0;
+    if(!valid)
+      return -1;
     {
-      u32 file_options[file_size / 4];
       u32 i;
       s32 menu_button = -1;
-      file_read_array(config_file, file_options);
+
 
       screen_scale = file_options[0] % 3;
       screen_filter = file_options[1] % 2;
@@ -719,7 +875,7 @@ s32 load_config_file()
         gamepad_config_map[0] = BUTTON_ID_MENU;
       }
 
-      file_close(config_file);
+
     }
 
     return 0;
@@ -733,6 +889,8 @@ s32 save_game_config_file()
   u8 game_config_filename[512];
   u32 i;
 
+  if(!gamepak_filename[0])
+    return 0;
   change_ext(gamepak_filename, game_config_filename, ".cfg");
 
   file_open(game_config_file, game_config_filename, write);
@@ -751,12 +909,15 @@ s32 save_game_config_file()
       file_options[4 + i] = cheats[i].cheat_active;
     }
 
-    file_write_array(game_config_file, file_options);
-    file_close(game_config_file);
-
-    return 0;
+    s32 valid = file_write_ok(game_config_file, file_options,
+     sizeof(file_options));
+    if(file_close(game_config_file) != 0)
+      valid = 0;
+    if(valid)
+      return 0;
   }
 
+  gpsp_save_error("Game settings", (char *)game_config_filename);
   return -1;
 }
 
@@ -771,7 +932,7 @@ s32 save_config_file()
 
   file_open(config_file, config_path, write);
 
-  save_game_config_file();
+  s32 game_result = save_game_config_file();
 
   if(file_check_valid(config_file))
   {
@@ -791,12 +952,15 @@ s32 save_config_file()
       file_options[7 + i] = gamepad_config_map[i];
     }
 
-    file_write_array(config_file, file_options);
-    file_close(config_file);
-
-    return 0;
+    s32 valid = file_write_ok(config_file, file_options,
+     sizeof(file_options));
+    if(file_close(config_file) != 0)
+      valid = 0;
+    if(valid)
+      return game_result;
   }
 
+  gpsp_save_error("Settings", (char *)config_path);
   return -1;
 }
 
@@ -899,9 +1063,14 @@ u32 menu(u16 *original_screen)
   menu_option_type *current_option;
   menu_option_type *display_option;
   u32 current_option_num;
+  u32 menu_dirty = 1;
+  u32 menu_background_drawn = 0;
+  u32 savestate_preview_dirty = 0;
 
   auto void choose_menu();
   auto void clear_help();
+  auto void menu_update_savestate_preview();
+  auto void submenu_savestate();
 
   u8 *gamepad_help[] =
   {
@@ -915,8 +1084,13 @@ u32 menu(u16 *original_screen)
     "Right shoulder button on GBA.",
     "Start button on GBA.",
     "Select button on GBA.",
+#ifdef _arch_dreamcast
+    "Opens the in-game pause menu.",
+    "Opens the in-game pause menu.",
+#else
     "Brings up frameskip adjust bar and menu access.",
     "Jumps directly to the menu.",
+#endif
     "Toggles fastforward on/off (don't expect it to do much or anything)",
     "Loads the game state from the current slot.",
     "Saves the game state to the current slot.",
@@ -949,7 +1123,11 @@ u32 menu(u16 *original_screen)
     {
        if(load_gamepak(load_filename) == -1)
        {
+#ifdef _arch_dreamcast
+         gpsp_gamepak_load_error((char *)load_filename);
+#else
          quit();
+#endif
        }
        reset_gba();
        return_value = 1;
@@ -975,7 +1153,24 @@ u32 menu(u16 *original_screen)
 
   void menu_change_state()
   {
-    get_savestate_filename(savestate_slot, current_savestate_filename);
+    get_savestate_filename_noshot(savestate_slot, current_savestate_filename);
+    savestate_preview_dirty = 1;
+    menu_dirty = 1;
+  }
+
+  void menu_sync_savestate_slot()
+  {
+    get_savestate_filename_noshot(savestate_slot, current_savestate_filename);
+  }
+
+  void menu_update_savestate_preview()
+  {
+    if(!savestate_preview_dirty || current_menu->init_function !=
+     submenu_savestate)
+      return;
+
+    get_savestate_snapshot(current_savestate_filename);
+    savestate_preview_dirty = 0;
   }
 
   void menu_save_state()
@@ -984,7 +1179,8 @@ u32 menu(u16 *original_screen)
     {
       get_savestate_filename_noshot(savestate_slot,
        current_savestate_filename);
-      save_state(current_savestate_filename, original_screen);
+      if(save_state(current_savestate_filename, original_screen) != 0)
+        return;
     }
     menu_change_state();
   }
@@ -1109,10 +1305,16 @@ u32 menu(u16 *original_screen)
   {
     string_selection_option(NULL, "Display scaling", scale_options,
      (u32 *)(&screen_scale), 3,
+#ifdef _arch_dreamcast
+     "Determines how the GBA screen is displayed on Dreamcast.\n"
+     "Select unscaled 3:2 for native GBA resolution, scaled 3:2 to\n"
+     "preserve aspect ratio, and fullscreen to fill the screen.", 2),
+#else
      "Determines how the GBA screen is resized in relation to the entire\n"
      "screen. Select unscaled 3:2 for GBA resolution, scaled 3:2 for GBA\n"
      "aspect ratio scaled to fill the height of the PSP screen, and\n"
      "fullscreen to fill the entire PSP screen.", 2),
+#endif
     string_selection_option(NULL, "Screen filtering", yes_no_options,
      (u32 *)(&screen_filter), 2,
      "Determines whether or not bilinear filtering should be used when\n"
@@ -1131,7 +1333,7 @@ u32 menu(u16 *original_screen)
      "are allowed to be skipped consecutively.\n"
      "For manual frameskip, determines the number of frames that will\n"
      "always be skipped.", 6),
-    string_selection_option(NULL, "Framskip variation",
+    string_selection_option(NULL, "Frameskip variation",
      frameskip_variation_options, &random_skip, 2,
      "If objects in the game flicker at a regular rate certain manual\n"
      "frameskip values may cause them to normally disappear. Change this\n"
@@ -1146,7 +1348,11 @@ u32 menu(u16 *original_screen)
      "Set the size (in bytes) of the audio buffer. Larger values may result\n"
      "in slightly better performance at the cost of latency; the lowest\n"
      "value will give the most responsive audio.\n"
+#ifdef _arch_dreamcast
+     "Restart gPSPDC for this option to take effect.",
+#else
      "This option requires gpSP to be restarted before it will take effect.",
+#endif
      10),
     submenu_option(NULL, "Back", "Return to the main menu.", 12)
   };
@@ -1165,18 +1371,36 @@ u32 menu(u16 *original_screen)
     cheat_option(7),
     cheat_option(8),
     cheat_option(9),
+#ifndef _arch_dreamcast
     string_selection_option(NULL, "Clock speed",
      clock_speed_options, &clock_speed_number, 10,
      "Change the clock speed of the device. Higher clock speed will yield\n"
      "better performance, but will use drain battery life further.", 11),
+#endif
     string_selection_option(NULL, "Update backup",
      update_backup_options, &update_backup_flag, 2,
+#ifdef _arch_dreamcast
+     "Selects when backup writes are attempted. The GD-ROM is read-only.\n"
+     "Disc saves cannot persist; VMU storage is not implemented.\n"
+     "A writable destination is required to keep progress.",
+#else
      "Determines when in-game save files should be written back to\n"
      "memstick. If set to 'automatic' writebacks will occur shortly after\n"
      "the game's backup is altered. On 'exit only' it will only be written\n"
      "back when you exit from this menu (NOT from using the home button).\n"
-     "Use the latter with extreme care.", 12),
-    submenu_option(NULL, "Back", "Return to the main menu.", 14)
+     "Use the latter with extreme care.",
+#endif
+#ifndef _arch_dreamcast
+     12),
+#else
+     11),
+#endif
+    submenu_option(NULL, "Back", "Return to the main menu.",
+#ifndef _arch_dreamcast
+     14)
+#else
+     12)
+#endif
   };
 
   make_menu(cheats_misc, submenu_cheats_misc, NULL);
@@ -1210,10 +1434,17 @@ u32 menu(u16 *original_screen)
     gamepad_config_option("D-pad down   ", 1),
     gamepad_config_option("D-pad left   ", 2),
     gamepad_config_option("D-pad right  ", 3),
+#ifdef _arch_dreamcast
+    gamepad_config_option("A button     ", 4),
+    gamepad_config_option("B button     ", 5),
+    gamepad_config_option("X button     ", 6),
+    gamepad_config_option("Y button     ", 7),
+#else
     gamepad_config_option("Circle       ", 4),
     gamepad_config_option("Cross        ", 5),
     gamepad_config_option("Square       ", 6),
     gamepad_config_option("Triangle     ", 7),
+#endif
     gamepad_config_option("Left Trigger ", 8),
     gamepad_config_option("Right Trigger", 9),
     gamepad_config_option("Start        ", 10),
@@ -1245,13 +1476,13 @@ u32 menu(u16 *original_screen)
   {
     submenu_option(&graphics_sound_menu, "Graphics and Sound options",
      "Select to set display parameters and frameskip behavior,\n"
-     "audio on/off, audio buffer size, and audio filtering.", 0),
-    numeric_selection_action_option(menu_load_state, NULL,
+     "audio on/off, audio buffer size, and screen filtering.", 0),
+    numeric_selection_action_option(menu_load_state, menu_sync_savestate_slot,
      "Load state from slot", &savestate_slot, 10,
      "Select to load the game state from the current slot for this game,\n"
      "if it exists (see the extended menu for more information)\n"
      "Press left + right to change the current slot.", 2),
-    numeric_selection_action_option(menu_save_state, NULL,
+    numeric_selection_action_option(menu_save_state, menu_sync_savestate_slot,
      "Save state to slot", &savestate_slot, 10,
      "Select to save the game state to the current slot for this game.\n"
      "See the extended menu for more information.\n"
@@ -1261,13 +1492,24 @@ u32 menu(u16 *original_screen)
      "currently active savestate for this game (or to load a savestate\n"
      "file from another game)", 4),
     submenu_option(&gamepad_config_menu, "Configure gamepad input",
+#ifdef _arch_dreamcast
+     "Select to change the in-game behavior of the controller buttons\n"
+     "and d-pad.",
+#else
      "Select to change the in-game behavior of the PSP buttons and d-pad.",
+#endif
      6),
+#ifndef _arch_dreamcast
     submenu_option(&analog_config_menu, "Configure analog input",
      "Select to change the in-game behavior of the PSP analog nub.", 7),
+#endif
     submenu_option(&cheats_misc_menu, "Cheats and Miscellaneous options",
+#ifdef _arch_dreamcast
+     "Select to manage cheats and set backup behavior.", 9),
+#else
      "Select to manage cheats, set backup behavior, and set device clock\n"
      "speed.", 9),
+#endif
     action_option(menu_load, NULL, "Load new game",
      "Select to load a new game (will exit a game if currently playing).",
      11),
@@ -1275,25 +1517,58 @@ u32 menu(u16 *original_screen)
      "Select to reset the GBA with the current game loaded.", 12),
     action_option(menu_exit, NULL, "Return to game",
      "Select to exit this menu and resume gameplay.", 13),
-    action_option(menu_quit, NULL, "Exit gpSP",
+    action_option(menu_quit, NULL,
+#ifdef _arch_dreamcast
+     "Exit gPSPDC",
+     "Select to exit gPSPDC.", 15)
+#else
+     "Exit gpSP",
      "Select to exit gpSP and return to the PSP XMB/loader.", 15)
+#endif
   };
 
   make_menu(main, submenu_main, NULL);
+
+  u32 menu_option_unavailable(menu_option_type *option)
+  {
+    if(!first_load)
+      return 0;
+
+    if(option->action_function == menu_restart ||
+     option->action_function == menu_exit ||
+     option->action_function == menu_load_state ||
+     option->action_function == menu_save_state)
+      return 1;
+
+    if(option->sub_menu == &savestate_menu)
+      return 1;
+
+    return 0;
+  }
 
   void choose_menu(menu_type *new_menu)
   {
     if(new_menu == NULL)
       new_menu = &main_menu;
 
-    clear_screen(COLOR_BG);
-    blit_to_screen(original_screen, 240, 160, 230, 40);
+    if(!menu_background_drawn || (new_menu == &main_menu))
+    {
+      clear_screen(COLOR_BG);
+      blit_to_screen(original_screen, 240, 160, 230, 40);
+      menu_background_drawn = 1;
+    }
+    else
+    {
+      clear_screen_region(0, 30, 480, 250, COLOR_BG);
+    }
 
     current_menu = new_menu;
     current_option = new_menu->options;
     current_option_num = 0;
     if(current_menu->init_function)
      current_menu->init_function();
+
+    menu_dirty = 1;
   }
 
   void clear_help()
@@ -1306,16 +1581,25 @@ u32 menu(u16 *original_screen)
 
   video_resolution_large();
 
-  SDL_LockMutex(sound_mutex);
-  SDL_PauseAudio(1);
-  SDL_UnlockMutex(sound_mutex);
+  if(sound_initialized)
+  {
+    SDL_LockMutex(sound_mutex);
+    SDL_PauseAudio(1);
+    SDL_UnlockMutex(sound_mutex);
+  }
 
   if(gamepak_filename[0] == 0)
   {
     first_load = 1;
     memset(original_screen, 0x00, 240 * 160 * 2);
     print_string_ext("No game loaded yet.", 0xFFFF, 0x0000,
-     60, 75,original_screen, 240, 0);
+     60, 75, original_screen, 240, 0);
+    print_string_ext("gPSPDC " GPSPDC_VERSION, 0xFFFF, 0x0000,
+     70, 90, original_screen, 240, 0);
+    print_string_ext("Load new game to begin.", 0xFFFF, 0x0000,
+     55, 110, original_screen, 240, 0);
+    print_string_ext("Y: pause menu (default)", 0xFFFF, 0x0000,
+     45, 130, original_screen, 240, 0);
   }
 
   choose_menu(&main_menu);
@@ -1333,47 +1617,64 @@ u32 menu(u16 *original_screen)
     }
   }
 
-  current_menu->init_function();
-
   while(repeat)
   {
-    display_option = current_menu->options;
-
-    for(i = 0; i < current_menu->num_options; i++, display_option++)
+    if(menu_dirty)
     {
-      if(display_option->option_type & NUMBER_SELECTION_OPTION)
-      {
-        sprintf(line_buffer, display_option->display_string,
-         *(display_option->current_option));
-      }
-      else
+      menu_update_savestate_preview();
 
-      if(display_option->option_type & STRING_SELECTION_OPTION)
+      display_option = current_menu->options;
+
+      for(i = 0; i < current_menu->num_options; i++, display_option++)
       {
-        sprintf(line_buffer, display_option->display_string,
-         ((u32 *)display_option->options)[*(display_option->current_option)]);
-      }
-      else
-      {
-        strcpy(line_buffer, display_option->display_string);
+        if(display_option->option_type & NUMBER_SELECTION_OPTION)
+        {
+          sprintf(line_buffer, display_option->display_string,
+           *(display_option->current_option));
+        }
+        else
+
+        if(display_option->option_type & STRING_SELECTION_OPTION)
+        {
+          sprintf(line_buffer, display_option->display_string,
+           ((u32 *)display_option->options)[*(display_option->current_option)]);
+        }
+        else
+        {
+          strcpy(line_buffer, display_option->display_string);
+        }
+
+        if(menu_option_unavailable(display_option))
+        {
+          print_string_pad(line_buffer, COLOR_INACTIVE_ITEM, COLOR_BG, 10,
+           (display_option->line_number * 10) + 40, 36);
+        }
+        else
+
+        if(display_option == current_option)
+        {
+          print_string_pad(line_buffer, COLOR_ACTIVE_ITEM, COLOR_BG, 10,
+           (display_option->line_number * 10) + 40, 36);
+        }
+        else
+        {
+          print_string_pad(line_buffer, COLOR_INACTIVE_ITEM, COLOR_BG, 10,
+           (display_option->line_number * 10) + 40, 36);
+        }
       }
 
-      if(display_option == current_option)
-      {
-        print_string_pad(line_buffer, COLOR_ACTIVE_ITEM, COLOR_BG, 10,
-         (display_option->line_number * 10) + 40, 36);
-      }
-      else
-      {
-        print_string_pad(line_buffer, COLOR_INACTIVE_ITEM, COLOR_BG, 10,
-         (display_option->line_number * 10) + 40, 36);
-      }
+      print_string(current_option->help_string, COLOR_HELP_TEXT,
+       COLOR_BG, 30, 210);
+
+      flip_screen();
+      menu_dirty = 0;
     }
-
-    print_string(current_option->help_string, COLOR_HELP_TEXT,
-     COLOR_BG, 30, 210);
-
-    flip_screen();
+#ifdef _arch_dreamcast
+    else
+    {
+      delay_us(16000);
+    }
+#endif
 
     gui_action = get_gui_input();
 
@@ -1385,6 +1686,7 @@ u32 menu(u16 *original_screen)
 
         current_option = current_menu->options + current_option_num;
         clear_help();
+        menu_dirty = 1;
         break;
 
       case CURSOR_UP:
@@ -1395,6 +1697,7 @@ u32 menu(u16 *original_screen)
 
         current_option = current_menu->options + current_option_num;
         clear_help();
+        menu_dirty = 1;
         break;
 
       case CURSOR_RIGHT:
@@ -1407,6 +1710,8 @@ u32 menu(u16 *original_screen)
 
           if(current_option->passive_function)
             current_option->passive_function();
+          else
+            menu_dirty = 1;
         }
         break;
 
@@ -1425,6 +1730,8 @@ u32 menu(u16 *original_screen)
 
           if(current_option->passive_function)
             current_option->passive_function();
+          else
+            menu_dirty = 1;
         }
         break;
 
@@ -1436,11 +1743,14 @@ u32 menu(u16 *original_screen)
         break;
 
       case CURSOR_SELECT:
-        if(current_option->option_type & ACTION_OPTION)
-          current_option->action_function();
+        if(!menu_option_unavailable(current_option))
+        {
+          if(current_option->option_type & ACTION_OPTION)
+            current_option->action_function();
 
-        if(current_option->option_type & SUBMENU_OPTION)
-          choose_menu(current_option->sub_menu);
+          if(current_option->option_type & SUBMENU_OPTION)
+            choose_menu(current_option->sub_menu);
+        }
         break;
 
       default:
@@ -1449,7 +1759,9 @@ u32 menu(u16 *original_screen)
   }
 
   set_gba_resolution(screen_scale);
+#ifndef _arch_dreamcast
   video_resolution_small();
+#endif
 
   clock_speed = (clock_speed_number + 1) * 33;
 
@@ -1457,7 +1769,10 @@ u32 menu(u16 *original_screen)
     scePowerSetClockFrequency(clock_speed, clock_speed, clock_speed / 2);
   #endif
 
-  SDL_PauseAudio(0);
+  save_config_file();
+
+  if(sound_initialized)
+    SDL_PauseAudio(0);
 
   return return_value;
 }

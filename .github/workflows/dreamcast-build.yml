@@ -1,0 +1,28 @@
+name: Dreamcast build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dreamcast, 'cursor/**', 'claude/**', 'codex/**']
+  pull_request:
+    branches: [dreamcast]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run host contract tests
+        run: make -C tests test
+      - name: Ensure a fresh ELF is built
+        run: rm -f dc/gdC.elf
+      - name: Cross-compile gdC.elf
+        run: ./scripts/dc-build.sh
+      - name: Verify gdC.elf
+        run: test -f dc/gdC.elf
+      - name: Upload Dreamcast executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: gPSPDC-${{ github.sha }}
+          path: dc/gdC.elf
+          if-no-files-found: error

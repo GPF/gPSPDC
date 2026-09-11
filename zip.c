@@ -18,8 +18,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <zlib.h>
 #include "common.h"
+
+#ifdef GPSP_USE_MINIZ
+#define MINIZ_NO_STDIO
+#define MINIZ_NO_TIME
+#define MINIZ_NO_DEFLATE_APIS
+#define MINIZ_NO_ARCHIVE_APIS
+#include "third_party/miniz/miniz.c"
+#include "third_party/miniz/miniz_tinfl.c"
+#else
+#include <zlib.h>
+#endif
 
 #define ZIP_BUFFER_SIZE (128 * 1024)
 
@@ -46,13 +56,23 @@ struct SZIPFileHeader
 u32 load_file_zip(char *filename)
 {
   struct SZIPFileHeader data;
+#ifdef _arch_dreamcast
+  char open_path[512];
+#else
+  char *open_path = filename;
+#endif
   u8 tmp[1024];
   s32 retval = -1;
   u8 *buffer = NULL;
   u8 *cbuffer;
   u8 *ext;
+  char *dot;
 
-  file_open(fd, filename, read);
+#ifdef _arch_dreamcast
+  snprintf(open_path, sizeof(open_path), "/cd/gbaDC/%s", filename);
+#endif
+
+  file_open(fd, open_path, read);
 
   if(!file_check_valid(fd))
     return -1;
@@ -64,6 +84,9 @@ u32 load_file_zip(char *filename)
     // zip file end
     if(data.Sig != 0x04034b50)
       break;
+
+    if(data.FilenameLength >= (s32)sizeof(tmp))
+      continue;
 
     file_read(fd, tmp, data.FilenameLength);
     tmp[data.FilenameLength] = 0; // end string
@@ -77,13 +100,17 @@ u32 load_file_zip(char *filename)
        sizeof(struct SZIPFileDataDescriptor));
     }
 
-    ext = strrchr(tmp, '.') + 1;
+    dot = strrchr((char *)tmp, '.');
+    if(dot == NULL || dot[1] == '\0')
+      continue;
+
+    ext = (u8 *)(dot + 1);
 
     // file is too big
     if(data.DataDescriptor.UncompressedSize > gamepak_ram_buffer_size)
       goto outcode;
 
-    if(!strcasecmp(ext, "bin") || !strcasecmp(ext, "gba"))
+    if(!strcasecmp((char *)ext, "bin") || !strcasecmp((char *)ext, "gba"))
     {
       buffer = gamepak_rom;
 
@@ -99,39 +126,61 @@ u32 load_file_zip(char *filename)
         case 8:
         {
           z_stream stream;
-          s32 err;
+          int err;
+          u32 expected_size = (u32)data.DataDescriptor.UncompressedSize;
 
-          cbuffer = malloc(ZIP_BUFFER_SIZE);
+          cbuffer = (u8 *)malloc(ZIP_BUFFER_SIZE);
+          if(cbuffer == NULL)
+            goto outcode;
 
-          stream.next_in = (Bytef*)cbuffer;
-          stream.avail_in = (u32)ZIP_BUFFER_SIZE;
-
-          stream.next_out = (Bytef*)buffer;
-          retval = stream.avail_out = data.DataDescriptor.UncompressedSize;
-
+          memset(&stream, 0, sizeof(stream));
+          stream.next_out = (Bytef *)buffer;
+          stream.avail_out = expected_size;
           stream.zalloc = (alloc_func)0;
           stream.zfree = (free_func)0;
 
           err = inflateInit2(&stream, -MAX_WBITS);
+          if(err != Z_OK)
+          {
+            free(cbuffer);
+            goto outcode;
+          }
 
           file_read(fd, cbuffer, ZIP_BUFFER_SIZE);
+          stream.next_in = (Bytef *)cbuffer;
+          stream.avail_in = ZIP_BUFFER_SIZE;
 
-          if(err == Z_OK)
+          err = Z_OK;
+          while(err != Z_STREAM_END)
           {
-            while(err != Z_STREAM_END)
+            err = inflate(&stream, Z_SYNC_FLUSH);
+            if(err == Z_STREAM_END)
+              break;
+
+            if(err == Z_BUF_ERROR)
             {
-              err = inflate(&stream, Z_SYNC_FLUSH);
-              if(err == Z_BUF_ERROR)
-              {
-                stream.avail_in = ZIP_BUFFER_SIZE;
-                stream.next_in = (Bytef*)cbuffer;
-                file_read(fd, cbuffer, ZIP_BUFFER_SIZE);
-              }
+              file_read(fd, cbuffer, ZIP_BUFFER_SIZE);
+              stream.next_in = (Bytef *)cbuffer;
+              stream.avail_in = ZIP_BUFFER_SIZE;
+              err = Z_OK;
+              continue;
             }
-            err = Z_OK;
-            inflateEnd(&stream);
+
+            if(err != Z_OK)
+            {
+              inflateEnd(&stream);
+              free(cbuffer);
+              goto outcode;
+            }
           }
+
+          inflateEnd(&stream);
           free(cbuffer);
+
+          if(stream.total_out != expected_size)
+            goto outcode;
+
+          retval = (s32)expected_size;
           goto outcode;
         }
       }

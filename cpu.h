@@ -118,13 +118,23 @@ u32 function_cc execute_load_u16(u32 address);
 u32 function_cc execute_load_u32(u32 address);
 u32 function_cc execute_load_s8(u32 address);
 u32 function_cc execute_load_s16(u32 address);
+#if defined(_arch_dreamcast)
+void function_cc execute_store_u8(u32 address, u32 source, u32 pc,
+ u32 cycles);
+void function_cc execute_store_u16(u32 address, u32 source, u32 pc,
+ u32 cycles);
+void function_cc execute_store_u32(u32 address, u32 source, u32 pc,
+ u32 cycles);
+#else
 void function_cc execute_store_u8(u32 address, u32 source);
 void function_cc execute_store_u16(u32 address, u32 source);
 void function_cc execute_store_u32(u32 address, u32 source);
+#endif
 void function_cc execute_store_u8_no_smc(u32 address, u32 source);
 void function_cc execute_store_u16_no_smc(u32 address, u32 source);
 void function_cc execute_store_u32_no_smc(u32 address, u32 source);
 u32 function_cc execute_arm_translate(u32 cycles);
+void function_cc execute_arm_block_memory(u32 opcode, u32 insn_pc);
 void init_translater();
 void cpu_write_mem_savestate(file_tag_type savestate_file);
 void cpu_read_savestate(file_tag_type savestate_file);
@@ -136,9 +146,16 @@ s32 translate_block_arm(u32 pc, translation_region_type translation_region,
 s32 translate_block_thumb(u32 pc, translation_region_type translation_region,
  u32 smc_enable);
 
+#ifdef _arch_dreamcast
+// Smaller caches on DC (~16 MB system RAM) leave more room for the ROM buffer.
+#define ROM_TRANSLATION_CACHE_SIZE (1024 * 256 * 4)
+#define RAM_TRANSLATION_CACHE_SIZE (1024 * 256)
+#define BIOS_TRANSLATION_CACHE_SIZE (1024 * 64)
+#else
 #define ROM_TRANSLATION_CACHE_SIZE (1024 * 512 * 4)
 #define RAM_TRANSLATION_CACHE_SIZE (1024 * 384)
 #define BIOS_TRANSLATION_CACHE_SIZE (1024 * 128)
+#endif
 #define TRANSLATION_CACHE_LIMIT_THRESHOLD (1024)
 
 extern u8 rom_translation_cache[ROM_TRANSLATION_CACHE_SIZE];
